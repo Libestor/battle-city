@@ -38,7 +38,6 @@ module.exports = function(env = {}, argv) {
       filename: 'index.html',
       template: path.resolve(__dirname, `app/index.html`),
     }),
-    !prod && new webpack.HotModuleReplacementPlugin(),
   ].filter(Boolean)
 
   return {
@@ -63,12 +62,6 @@ module.exports = function(env = {}, argv) {
           test: /\.tsx?$/,
           use: [
             {
-              loader: 'babel-loader',
-              options: {
-                plugins: ['react-hot-loader/babel'],
-              },
-            },
-            {
               loader: 'ts-loader',
               options: {
                 transpileOnly: true,
@@ -87,7 +80,9 @@ module.exports = function(env = {}, argv) {
     plugins,
 
     devServer: {
-      contentBase: __dirname,
+      static: {
+        directory: __dirname,
+      },
       hot: true,
     },
   }
