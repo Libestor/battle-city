@@ -33,7 +33,46 @@
 
 - [ ] 更合理的电脑玩家
 - [ ] 完整的设计、开发文档
-- [ ] 基于 websocket 的多人游戏模式
+- [x] 基于 websocket 的多人游戏模式 ✨ **已完成！**
+
+### 🎮 联机对战功能（新增）
+
+本项目现已支持基于 WebSocket 的实时联机对战功能！
+
+#### 快速开始
+```bash
+# 一键启动前后端服务
+./start-multiplayer.sh
+```
+
+或手动启动：
+```bash
+# 启动后端服务器
+cd server
+npm install
+npm run dev
+
+# 启动前端（新终端）
+cd ..
+npm start
+```
+
+#### 功能特性
+- ✅ 房间创建与加入（6位房间号）
+- ✅ 实时输入同步（目标延迟20-50ms）
+- ✅ 断线重连机制（30秒超时）
+- ✅ 游戏状态同步
+- ✅ 连接状态监控
+
+#### 详细文档
+- [部署指南](./MULTIPLAYER_GUIDE.md) - 完整的部署和使用说明
+- [实现总结](./IMPLEMENTATION_SUMMARY.md) - 技术实现细节
+- [服务器文档](./server/README.md) - 后端API文档
+
+#### 技术栈
+- **后端**: Node.js + Express + Socket.IO
+- **前端**: React + Redux + Socket.IO Client
+- **语言**: TypeScript（前后端统一）
 
 ### 本地开发
 

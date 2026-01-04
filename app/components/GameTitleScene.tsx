@@ -15,9 +15,9 @@ import { Tank } from './tanks'
 import Text from './Text'
 import TextButton from './TextButton'
 
-type Choice = 'single-player' | 'multi-players' | 'stage-list' | 'gallery'
+type Choice = 'single-player' | 'multi-players' | 'multiplayer-online' | 'stage-list' | 'gallery'
 
-const CHOICES: Choice[] = ['single-player', 'multi-players', 'stage-list', 'gallery']
+const CHOICES: Choice[] = ['single-player', 'multi-players', 'multiplayer-online', 'stage-list', 'gallery']
 
 function nextChoice(choice: Choice): Choice {
   const index = CHOICES.indexOf(choice)
@@ -67,6 +67,8 @@ export class GameTitleSceneContent extends React.PureComponent<
       push('/choose')
     } else if (choice === 'multi-players') {
       push(`/choose?${MULTI_PLAYERS_SEARCH_KEY}`)
+    } else if (choice === 'multiplayer-online') {
+      push('/multiplayer')
     } else {
       push('/gallery')
     }
@@ -135,9 +137,17 @@ export class GameTitleSceneContent extends React.PureComponent<
           onClick={() => this.onChoose('multi-players')}
         />
         <TextButton
-          content="stage list"
+          content="online"
           x={5.5 * B}
           y={10 * B}
+          textFill="white"
+          onMouseOver={() => this.setState({ choice: 'multiplayer-online' })}
+          onClick={() => this.onChoose('multiplayer-online')}
+        />
+        <TextButton
+          content="stage list"
+          x={5.5 * B}
+          y={11 * B}
           textFill="white"
           onMouseOver={() => this.setState({ choice: 'stage-list' })}
           onClick={() => this.onChoose('stage-list')}
@@ -145,7 +155,7 @@ export class GameTitleSceneContent extends React.PureComponent<
         <TextButton
           content="gallery"
           x={5.5 * B}
-          y={11 * B}
+          y={12 * B}
           textFill="white"
           onMouseOver={() => this.setState({ choice: 'gallery' })}
           onClick={() => this.onChoose('gallery')}
@@ -163,8 +173,8 @@ export class GameTitleSceneContent extends React.PureComponent<
           }
         />
 
-        <Text content={'\u00a9 1980 1985 NAMCO LTD.'} x={2 * B} y={12.5 * B} />
-        <Text content="ALL RIGHTS RESERVED" x={3 * B} y={13.5 * B} />
+        <Text content={'\u00a9 1980 1985 NAMCO LTD.'} x={2 * B} y={13.5 * B} />
+        <Text content="ALL RIGHTS RESERVED" x={3 * B} y={14.5 * B} />
       </g>
     )
   }

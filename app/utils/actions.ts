@@ -100,6 +100,19 @@ export enum A {
   SyncCustomStages = 'SyncCustomStages',
   LeaveGameScene = 'LeaveGameScene',
   PlaySound = 'PlaySound',
+  // Multiplayer actions
+  EnableMultiplayer = 'EnableMultiplayer',
+  DisableMultiplayer = 'DisableMultiplayer',
+  SetConnectionStatus = 'SetConnectionStatus',
+  SetRoomInfo = 'SetRoomInfo',
+  SetGameInitialState = 'SetGameInitialState',
+  SetOpponentConnected = 'SetOpponentConnected',
+  SetMultiplayerError = 'SetMultiplayerError',
+  UpdateNetworkStats = 'UpdateNetworkStats',
+  StartGameCountdown = 'StartGameCountdown',
+  CancelGameCountdown = 'CancelGameCountdown',
+  UpdateCountdown = 'UpdateCountdown',
+  MultiplayerGameStart = 'MultiplayerGameStart',
 }
 
 export type Move = ReturnType<typeof move>
@@ -681,6 +694,57 @@ export const syncCustomStages = () => ({ type: A.SyncCustomStages as A.SyncCusto
 export type LeaveGameScene = ReturnType<typeof leaveGameScene>
 export const leaveGameScene = () => ({ type: A.LeaveGameScene as A.LeaveGameScene })
 
+// Multiplayer action creators
+export type EnableMultiplayer = ReturnType<typeof enableMultiplayer>
+export const enableMultiplayer = () => ({ type: A.EnableMultiplayer as A.EnableMultiplayer })
+
+export type DisableMultiplayer = ReturnType<typeof disableMultiplayer>
+export const disableMultiplayer = () => ({ type: A.DisableMultiplayer as A.DisableMultiplayer })
+
+export type SetConnectionStatus = ReturnType<typeof setConnectionStatus>
+export function setConnectionStatus(status: any) {
+  return { type: A.SetConnectionStatus as A.SetConnectionStatus, status }
+}
+
+export type SetRoomInfo = ReturnType<typeof setRoomInfo>
+export function setRoomInfo(roomInfo: any) {
+  return { type: A.SetRoomInfo as A.SetRoomInfo, roomInfo }
+}
+
+export type SetGameInitialState = ReturnType<typeof setGameInitialState>
+export function setGameInitialState(initialState: any) {
+  return { type: A.SetGameInitialState as A.SetGameInitialState, initialState }
+}
+
+export type SetOpponentConnected = ReturnType<typeof setOpponentConnected>
+export function setOpponentConnected(connected: boolean) {
+  return { type: A.SetOpponentConnected as A.SetOpponentConnected, connected }
+}
+
+export type SetMultiplayerError = ReturnType<typeof setMultiplayerError>
+export function setMultiplayerError(error: string | null) {
+  return { type: A.SetMultiplayerError as A.SetMultiplayerError, error }
+}
+
+export type UpdateNetworkStats = ReturnType<typeof updateNetworkStats>
+export function updateNetworkStats(stats: any) {
+  return { type: A.UpdateNetworkStats as A.UpdateNetworkStats, stats }
+}
+
+export type StartGameCountdown = ReturnType<typeof startGameCountdown>
+export const startGameCountdown = () => ({ type: A.StartGameCountdown as A.StartGameCountdown })
+
+export type CancelGameCountdown = ReturnType<typeof cancelGameCountdown>
+export const cancelGameCountdown = () => ({ type: A.CancelGameCountdown as A.CancelGameCountdown })
+
+export type UpdateCountdown = ReturnType<typeof updateCountdown>
+export function updateCountdown(countdown: number) {
+  return { type: A.UpdateCountdown as A.UpdateCountdown, countdown }
+}
+
+export type MultiplayerGameStart = ReturnType<typeof multiplayerGameStart>
+export const multiplayerGameStart = () => ({ type: A.MultiplayerGameStart as A.MultiplayerGameStart })
+
 export type Action =
   | Move
   | StartMove
@@ -763,3 +827,15 @@ export type Action =
   | SyncCustomStages
   | LeaveGameScene
   | PlaySound
+  | EnableMultiplayer
+  | DisableMultiplayer
+  | SetConnectionStatus
+  | SetRoomInfo
+  | SetGameInitialState
+  | SetOpponentConnected
+  | SetMultiplayerError
+  | UpdateNetworkStats
+  | StartGameCountdown
+  | CancelGameCountdown
+  | UpdateCountdown
+  | MultiplayerGameStart

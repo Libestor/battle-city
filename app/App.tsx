@@ -10,6 +10,7 @@ import GameoverScene from './components/GameoverScene'
 import GameScene from './components/GameScene'
 import GameTitleScene from './components/GameTitleScene'
 import StageListPageWrapper from './components/StageList'
+import MultiplayerLobby from './components/MultiplayerLobby'
 import { GameRecord } from './reducers/game'
 import { firstStageName as fsn } from './stages'
 import { State } from './types'
@@ -27,6 +28,7 @@ function App({ game }: AppProps) {
           <Route path="/list/*" element={<StageListPageWrapper />} />
           <Route path="/editor/:view?" element={<Editor />} />
           <Route path="/gallery/:tab?" element={<Gallery />} />
+          <Route path="/multiplayer" element={<MultiplayerLobby />} />
           <Route path="/gameover" element={<GameoverScene />} />
           <Route path="/choose" element={<Navigate to={`/choose/${fsn}`} replace />} />
           <Route path="/choose/:stageName" element={<ChooseStageScene />} />

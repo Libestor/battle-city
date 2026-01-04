@@ -14,6 +14,7 @@ import Explosion from './Explosion'
 import Flicker from './Flicker'
 import ForestLayer from './ForestLayer'
 import HUD from './HUD'
+import NetworkStatus from './NetworkStatus'
 import PauseIndicator from './PauseIndicator'
 import PowerUp from './PowerUp'
 import RiverLayer from './RiverLayer'
@@ -93,6 +94,7 @@ class BattleFieldScene extends React.PureComponent<State> {
         <TextLayer texts={texts} />
         <CurtainsContainer />
         {game.paused ? <PauseIndicator x={6.25 * B} y={8 * B} /> : null}
+        <NetworkStatus />
       </Screen>
     )
   }

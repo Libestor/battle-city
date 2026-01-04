@@ -1,0 +1,67 @@
+.multiplayer-lobby {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background-color: #000;
+  color: #fff;
+  font-family: 'Press Start 2P', monospace;
+}
+
+.connection-status {
+  position: absolute;
+  top: 16px;
+  left: 32px;
+}
+
+.room-info {
+  position: absolute;
+  top: 64px;
+  left: 32px;
+}
+
+.lobby-menu {
+  position: absolute;
+  top: 64px;
+  left: 32px;
+}
+
+.join-room-section {
+  margin-top: 16px;
+}
+
+.error-message {
+  position: absolute;
+  bottom: 32px;
+  left: 32px;
+  color: #ff0000;
+}
+
+/* 按钮样式 */
+.multiplayer-lobby button {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.multiplayer-lobby button:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.multiplayer-lobby button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 输入框样式 */
+.multiplayer-lobby input {
+  background-color: #222;
+  border: 2px solid #fff;
+  color: #fff;
+  padding: 4px 8px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 12px;
+}
+
+.multiplayer-lobby input:focus {
+  outline: none;
+  border-color: #ffff00;
+}

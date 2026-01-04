@@ -1,10 +1,12 @@
 import last from 'lodash/last'
 import pull from 'lodash/pull'
-import { all, take } from 'redux-saga/effects'
+import { all, select, take } from 'redux-saga/effects'
 import { Input, PlayerConfig, TankRecord } from '../types'
 import { A } from '../utils/actions'
 import directionController from './directionController'
 import fireController from './fireController'
+import { socketService } from '../utils/SocketService'
+import { State } from '../reducers'
 
 // 一个 playerController 实例对应一个人类玩家(用户)的控制器.
 // 参数playerName用来指定人类玩家的玩家名称, config为该玩家的操作配置.
@@ -13,6 +15,8 @@ export default function* playerController(tankId: TankId, config: PlayerConfig) 
   let firePressing = false // 用来记录当前玩家是否按下了fire键
   let firePressed = false // 用来记录上一个tick内 玩家是否按下过fire键
   const pressed: Direction[] = [] // 用来记录上一个tick内, 玩家按下过的方向键
+  let lastSentInput: string | null = null // 上次发送的输入状态（用于节流）
+  let inputSequenceId = 0 // 输入序列号
 
   try {
     document.addEventListener('keydown', onKeyDown)
@@ -21,6 +25,7 @@ export default function* playerController(tankId: TankId, config: PlayerConfig) 
       directionController(tankId, getPlayerInput),
       fireController(tankId, () => firePressed || firePressing),
       resetFirePressedEveryTick(),
+      sendInputToServer(),
     ])
   } finally {
     document.removeEventListener('keydown', onKeyDown)
@@ -82,6 +87,37 @@ export default function* playerController(tankId: TankId, config: PlayerConfig) 
     while (true) {
       yield take(A.Tick)
       firePressed = false
+    }
+  }
+
+  // 发送输入到服务器（联机模式）
+  function* sendInputToServer() {
+    while (true) {
+      yield take(A.Tick)
+      
+      // 检查是否启用联机模式
+      const state: State = yield select()
+      if (!state.multiplayer.enabled || !state.multiplayer.roomInfo) {
+        continue
+      }
+      
+      // 构建当前输入状态
+      const currentDirection = pressed.length > 0 ? last(pressed) : null
+      const currentFire = firePressing || firePressed
+      const inputState = JSON.stringify({ direction: currentDirection, fire: currentFire })
+      
+      // 节流：只有输入状态改变时才发送
+      if (inputState !== lastSentInput) {
+        lastSentInput = inputState
+        inputSequenceId++
+        
+        // 发送输入到服务器
+        socketService.sendPlayerInput({
+          type: currentFire ? 'fire' : (currentDirection ? 'move' : 'direction'),
+          direction: currentDirection || undefined,
+          timestamp: Date.now(),
+        })
+      }
     }
   }
   // endregion

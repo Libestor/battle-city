@@ -17,6 +17,7 @@ import scores, { ScoresMap } from './scores'
 import stages from './stages'
 import tanks, { TanksMap } from './tanks'
 import texts, { TextsMap } from './texts'
+import multiplayer, { MultiplayerRecord } from './multiplayer'
 
 export interface State {
   router: any
@@ -35,6 +36,7 @@ export interface State {
   stages: List<StageConfig>
   editorContent: StageConfig
   devOnly: any
+  multiplayer: MultiplayerRecord
 }
 
 export function time(state = 0, action: Action) {
@@ -70,4 +72,5 @@ export default combineReducers<State>({
   stages,
   devOnly,
   editorContent,
+  multiplayer,
 })
