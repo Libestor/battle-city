@@ -83,6 +83,7 @@ module.exports = function(env = {}, argv) {
         directory: __dirname,
       },
       hot: true,
+      port: process.env.PORT || 8080,
     },
   }
 }
