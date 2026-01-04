@@ -3,10 +3,15 @@ import { eventChannel, EventChannel } from 'redux-saga';
 import { State } from '../reducers';
 import { A } from '../utils/actions';
 import { socketService } from '../utils/SocketService';
-import { SocketEvent, PlayerInput } from '../types/multiplayer-types';
+import { SocketEvent, PlayerInput, PlayerRole } from '../types/multiplayer-types';
 import * as actions from '../utils/actions';
 import { updateNetworkStats } from '../utils/multiplayerActions';
 import fireController from './fireController';
+import { setRandomSeed } from '../utils/common';
+
+function getOpponentPlayerName(role: PlayerRole): PlayerName {
+  return role === 'host' ? 'player-2' : 'player-1';
+}
 
 /**
  * 创建对手输入事件通道
@@ -68,7 +73,12 @@ function* handleOpponentInput(input: PlayerInput) {
 
   // 确定对手坦克ID
   const role = state.multiplayer.roomInfo.role;
-  const opponentTankId: TankId = role === 'host' ? 'secondPlayer' : 'player';
+  const opponentPlayerName = getOpponentPlayerName(role);
+  const opponentPlayer = opponentPlayerName === 'player-1' ? state.player1 : state.player2;
+  const opponentTankId = opponentPlayer.activeTankId;
+  if (!opponentTankId) {
+    return;
+  }
   
   // 获取对手坦克
   const opponentTank = state.tanks.get(opponentTankId);
@@ -163,6 +173,29 @@ function createPongChannel(): EventChannel<any> {
   });
 }
 
+function* watchOpponentFire(opponentPlayerName: PlayerName) {
+  while (true) {
+    const action: actions.ActivatePlayer = yield take(
+      (nextAction: actions.Action) =>
+        nextAction.type === A.ActivatePlayer && nextAction.playerName === opponentPlayerName,
+    );
+
+    const tankId = action.tankId;
+    const result: any = yield race({
+      controller: call(fireController, tankId, () => shouldOpponentFire(tankId)),
+      next: take(
+        (nextAction: actions.Action) =>
+          nextAction.type === A.ActivatePlayer && nextAction.playerName === opponentPlayerName,
+      ),
+      leave: take([A.LeaveGameScene, A.DisableMultiplayer]),
+    });
+
+    if (result.leave) {
+      return;
+    }
+  }
+}
+
 /**
  * 联机游戏主saga
  */
@@ -174,12 +207,15 @@ export default function* multiplayerGameSaga() {
     // 获取对手坦克ID
     const state: State = yield select();
     const role = state.multiplayer.roomInfo?.role;
-    const opponentTankId: TankId = role === 'host' ? 'secondPlayer' : 'player';
+    if (!role) {
+      continue;
+    }
+    const opponentPlayerName = getOpponentPlayerName(role);
     
     // 启动对手输入监听、fireController、ping循环和射击状态重置
     yield race({
       watchInput: call(watchOpponentInput),
-      opponentFire: call(fireController, opponentTankId, () => shouldOpponentFire(opponentTankId)),
+      opponentFire: call(watchOpponentFire, opponentPlayerName),
       resetFire: call(resetOpponentFireState),
       ping: call(pingLoop),
       leave: take([A.LeaveGameScene, A.DisableMultiplayer]),
@@ -187,5 +223,6 @@ export default function* multiplayerGameSaga() {
     
     // 清理对手射击状态
     opponentFireState = { firing: false, tankId: null };
+    setRandomSeed(null);
   }
 }

@@ -5,7 +5,7 @@ import { State } from '../reducers'
 import { TankFireInfo, TankRecord } from '../types'
 import * as actions from '../utils/actions'
 import { A } from '../utils/actions'
-import { randint } from '../utils/common'
+import { randint, random } from '../utils/common'
 import { BLOCK_DISTANCE_THRESHOLD, BLOCK_TIMEOUT } from '../utils/constants'
 import * as selectors from '../utils/selectors'
 import Timing from '../utils/Timing'
@@ -164,7 +164,7 @@ export default function* AIWorkerSaga(ctx: Bot) {
   }
 
   function* mode() {
-    if (Math.random() < 0.9 - continuousWanderCount * 0.02) {
+    if (random() < 0.9 - continuousWanderCount * 0.02) {
       continuousWanderCount++
       yield wanderMode(ctx)
     } else {
