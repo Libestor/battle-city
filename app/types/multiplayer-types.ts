@@ -39,18 +39,34 @@ export type PlayerRole = 'host' | 'guest';
 // 连接状态
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'error';
 
-// 玩家输入数据
+// 玩家输入数据（完整状态）
 export interface PlayerInput {
-  type: 'move' | 'fire' | 'direction';
-  direction?: 'up' | 'down' | 'left' | 'right';
+  type: 'state';  // 使用统一的状态类型
+  direction?: 'up' | 'down' | 'left' | 'right';  // 当前方向
+  moving: boolean;  // 是否正在移动
+  firing: boolean;  // 是否正在开火
   timestamp: number;
 }
 
+// 游戏状态事件类型
+export type GameStateEventType = 
+  | 'tank_spawn'      // 坦克生成
+  | 'tank_move'       // 坦克移动（用于AI坦克同步）
+  | 'tank_fire'       // 坦克开火
+  | 'tank_destroy'    // 坦克被摧毁
+  | 'bullet_create'   // 子弹创建
+  | 'bullet_destroy'  // 子弹销毁
+  | 'map_destroy'     // 地图破坏
+  | 'powerup_spawn'   // 道具生成
+  | 'powerup_pickup'  // 道具拾取
+  | 'full_sync';      // 完整状态同步
+
 // 游戏状态事件
 export interface GameStateEvent {
-  type: 'bullet_create' | 'bullet_destroy' | 'tank_hit' | 'tank_destroy' | 'map_destroy' | 'enemy_destroy' | 'game_over';
+  type: GameStateEventType;
   data: any;
   timestamp: number;
+  sender?: 'host' | 'guest';  // 发送者角色
 }
 
 // 游戏初始状态

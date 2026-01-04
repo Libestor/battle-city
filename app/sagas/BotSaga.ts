@@ -11,6 +11,12 @@ import directionController from './directionController'
 import fireController from './fireController'
 
 export default function* botSaga(tankId: TankId) {
+  // Guest 模式下不运行 AI 逻辑，坦克由 Host 状态同步控制
+  const isGuest: boolean = yield select(selectors.isGuest)
+  if (isGuest) {
+    return
+  }
+
   const ctx = new Bot(tankId)
   try {
     yield takeEvery(hitPredicate, hitHandler)

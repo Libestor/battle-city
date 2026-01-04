@@ -81,34 +81,57 @@ export default function* gameSaga(action: actions.StartGame | actions.ResetGame)
   yield delay(0)
   DEV.LOG && console.log('GAME STARTED')
 
-  const players = [playerSaga('player-1', PLAYER_CONFIGS.player1)]
-  if (yield select(selectors.isInMultiPlayersMode)) {
-    players.push(playerSaga('player-2', PLAYER_CONFIGS.player2))
-  }
+  // 检查是否为联机 Guest 模式
+  const isGuest: boolean = yield select(selectors.isGuest)
 
-  const result = yield race({
-    tick: tickEmitter({ bindESC: true }),
-    players: all(players),
-    ai: botMasterSaga(),
-    powerUp: powerUpManager(),
-    bullets: bulletsSaga(),
-    // 上面几个 saga 在一个 gameSaga 的生命周期内被认为是后台服务
-    // 当 stage-flow 退出（或者是用户直接离开了game-scene）的时候，自动取消上面几个后台服务
-    flow: stageFlow(action.stageIndex),
-    leave: take(A.LeaveGameScene),
-  })
+  if (isGuest) {
+    // Guest 模式：运行 tick 发射器、玩家输入发送、地图加载
+    // 游戏状态（坦克、子弹）由 Host 广播同步
+    console.log('Guest mode: 运行基础游戏逻辑，坦克和子弹状态由 Host 同步')
 
-  if (DEV.LOG) {
-    if (result.leave) {
-      console.log('LEAVE GAME SCENE')
+    // Guest 需要玩家输入发送器
+    const players = [playerSaga('player-2', PLAYER_CONFIGS.player2)]
+
+    yield race({
+      tick: tickEmitter({ bindESC: true }),
+      players: all(players),
+      flow: stageFlow(action.stageIndex),
+      leave: take(A.LeaveGameScene),
+    })
+  } else {
+    // Host 模式或单机模式：正常运行所有游戏逻辑
+    const players = [playerSaga('player-1', PLAYER_CONFIGS.player1)]
+    if (yield select(selectors.isInMultiPlayersMode)) {
+      // 在联机 Host 模式下，player-2 由 Host 根据 Guest 输入控制
+      // 但仍需要启动 playerSaga 来激活坦克
+      players.push(playerSaga('player-2', PLAYER_CONFIGS.player2))
+    }
+
+    const result = yield race({
+      tick: tickEmitter({ bindESC: true }),
+      players: all(players),
+      ai: botMasterSaga(),
+      powerUp: powerUpManager(),
+      bullets: bulletsSaga(),
+      // 上面几个 saga 在一个 gameSaga 的生命周期内被认为是后台服务
+      // 当 stage-flow 退出（或者是用户直接离开了game-scene）的时候，自动取消上面几个后台服务
+      flow: stageFlow(action.stageIndex),
+      leave: take(A.LeaveGameScene),
+    })
+
+    if (DEV.LOG) {
+      if (result.leave) {
+        console.log('LEAVE GAME SCENE')
+      }
+    }
+
+    if (result.flow) {
+      DEV.LOG && console.log('GAME ENDED')
+      const { router }: State = yield select()
+      yield put(replace(`/gameover${router.location.search}`))
     }
   }
 
-  if (result.flow) {
-    DEV.LOG && console.log('GAME ENDED')
-    const { router }: State = yield select()
-    yield put(replace(`/gameover${router.location.search}`))
-  }
   yield put(actions.beforeEndGame())
   yield put(actions.endGame())
 }

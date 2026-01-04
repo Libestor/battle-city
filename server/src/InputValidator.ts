@@ -16,8 +16,8 @@ export class InputValidator {
    * @returns 是否合法
    */
   validateInput(input: PlayerInput): boolean {
-    // 验证输入类型
-    if (!['move', 'fire', 'direction'].includes(input.type)) {
+    // 验证输入类型（新格式使用 'state' 类型）
+    if (input.type !== 'state') {
       Logger.warn(`Invalid input type: ${input.type}`);
       return false;
     }
@@ -25,6 +25,12 @@ export class InputValidator {
     // 验证方向
     if (input.direction && !['up', 'down', 'left', 'right'].includes(input.direction)) {
       Logger.warn(`Invalid direction: ${input.direction}`);
+      return false;
+    }
+
+    // 验证布尔字段
+    if (typeof input.moving !== 'boolean' || typeof input.firing !== 'boolean') {
+      Logger.warn('Invalid moving/firing fields');
       return false;
     }
 

@@ -87,10 +87,6 @@ export default function MultiplayerLobby() {
       socketService.off(SocketEvent.ROOM_ERROR, handleRoomError);
       socketService.off(SocketEvent.PLAYER_JOINED, handlePlayerJoined);
       socketService.off(SocketEvent.PLAYER_LEFT, handlePlayerLeft);
-
-      // 断开连接
-      socketService.disconnect();
-      dispatch(disableMultiplayer());
     };
   }, [dispatch]);
 
@@ -124,6 +120,11 @@ export default function MultiplayerLobby() {
   };
 
   const handleBack = () => {
+    if (multiplayer.roomInfo) {
+      socketService.leaveRoom();
+    }
+    socketService.disconnect();
+    dispatch(disableMultiplayer());
     window.history.back();
   };
 

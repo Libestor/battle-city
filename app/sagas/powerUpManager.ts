@@ -1,5 +1,4 @@
 import { Set as ISet } from 'immutable'
-import _ from 'lodash'
 import { cancelled, fork, put, race, select, take, takeEvery, takeLatest } from 'redux-saga/effects'
 import { calculateFireEstimateMap, getFireResist } from '../ai/fire-utils'
 import getAllSpots from '../ai/getAllSpots'
@@ -7,7 +6,7 @@ import { around, getTankSpot } from '../ai/spot-utils'
 import { MapRecord, PowerUpRecord, ScoreRecord, State, TanksMap } from '../types'
 import * as actions from '../utils/actions'
 import { A } from '../utils/actions'
-import { asRect, frame as f, getNextId, randint, random } from '../utils/common'
+import { asRect, frame as f, getNextId, randint, random, sampleWithRandom } from '../utils/common'
 import {
   BLOCK_SIZE,
   N_MAP,
@@ -200,7 +199,7 @@ function determineWhichPowerUpToSpawn(state: State): PowerUpName {
     }
   }
 
-  return _.sample(POWER_UP_NAMES)
+  return sampleWithRandom(POWER_UP_NAMES)
 }
 
 function* spawnPowerUpIfNeccessary(action: actions.Hit) {
@@ -208,7 +207,7 @@ function* spawnPowerUpIfNeccessary(action: actions.Hit) {
     const state: State = yield select()
     yield put(actions.removePowerUpProperty(action.targetTank.tankId))
     const powerUpName = determineWhichPowerUpToSpawn(state)
-    const position: Point = _.sample(selectors.validPowerUpSpawnPositions(state)) || {
+    const position: Point = sampleWithRandom(selectors.validPowerUpSpawnPositions(state)) || {
       x: (randint(0, 25) / 2) * BLOCK_SIZE,
       y: (randint(0, 25) / 2) * BLOCK_SIZE,
     }
@@ -255,3 +254,4 @@ export default function* powerUpManager() {
 
   yield fork(handleHelmetDuration)
 }
+

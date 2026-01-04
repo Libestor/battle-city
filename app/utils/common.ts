@@ -166,6 +166,14 @@ export function randint(start: number, end: number) {
   return Math.floor(random() * (end - start)) + start
 }
 
+export function sampleWithRandom<T>(items: ReadonlyArray<T>): T | null {
+  if (!items || items.length === 0) {
+    return null
+  }
+  const index = Math.floor(random() * items.length)
+  return items[index]
+}
+
 export const round8 = (x: number) => Math.round(x / 8) * 8
 export const floor8 = (x: number) => Math.floor(x / 8) * 8
 export const ceil8 = (x: number) => Math.ceil(x / 8) * 8

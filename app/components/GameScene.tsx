@@ -4,6 +4,7 @@ import { connect } from 'react-redux'
 import { useParams } from 'react-router-dom'
 import { Dispatch } from 'redux'
 import { GameRecord } from '../reducers/game'
+import { MultiplayerRecord } from '../reducers/multiplayer'
 import { State } from '../types'
 import StageConfig from '../types/StageConfig'
 import * as actions from '../utils/actions'
@@ -12,6 +13,7 @@ import StatisticsScene from './StatisticsScene'
 
 interface GameSceneInnerProps {
   game: GameRecord
+  multiplayer: MultiplayerRecord
   stages: List<StageConfig>
   dispatch: Dispatch
   stageName: string
@@ -27,7 +29,13 @@ class GameSceneInner extends React.PureComponent<GameSceneInnerProps> {
   }
 
   didMountOrUpdate() {
-    const { game, dispatch, stageName, stages } = this.props
+    const { game, dispatch, stageName, stages, multiplayer } = this.props
+    const isOnlineMultiplayer = multiplayer.enabled && multiplayer.roomInfo != null
+    // 联机模式下，游戏由 multiplayerLobbySaga 启动，不需要在这里启动
+    // 但如果游戏已经通过 multiplayerLobbySaga 启动，则不阻止后续逻辑
+    if (isOnlineMultiplayer && game.status === 'idle') {
+      return
+    }
     if (game.status === 'idle' || game.status === 'gameover') {
       // 如果游戏还没开始或已经结束 则开始游戏
       const stageIndex = stages.findIndex(s => s.name === stageName)
@@ -61,7 +69,7 @@ class GameSceneInner extends React.PureComponent<GameSceneInnerProps> {
 }
 
 function mapStateToProps(state: State) {
-  return { game: state.game, stages: state.stages }
+  return { game: state.game, stages: state.stages, multiplayer: state.multiplayer }
 }
 
 const ConnectedGameSceneInner = connect(mapStateToProps)(GameSceneInner)

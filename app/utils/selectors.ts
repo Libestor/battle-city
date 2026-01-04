@@ -1,6 +1,5 @@
-import _ from 'lodash'
 import { PlayerRecord, State, TankFireInfo } from '../types'
-import { asRect, testCollide } from './common'
+import { asRect, sampleWithRandom, testCollide } from './common'
 import {
   BLOCK_SIZE as B,
   FIELD_BLOCK_SIZE as FBZ,
@@ -76,7 +75,7 @@ export const availableSpawnPosition = (state: State): Rect => {
     }
     result.push(option)
   }
-  return _.sample(result)
+  return sampleWithRandom(result)
 }
 
 export const validPowerUpSpawnPositions = ({
@@ -124,3 +123,25 @@ export const validPowerUpSpawnPositions = ({
   }
   return validPositions
 }
+
+/**
+ * 判断当前客户端是否为 Host（联机模式下）
+ */
+export const isHost = (state: State): boolean => {
+  return state.multiplayer.enabled && state.multiplayer.roomInfo?.role === 'host';
+};
+
+/**
+ * 判断当前客户端是否为 Guest（联机模式下）
+ */
+export const isGuest = (state: State): boolean => {
+  return state.multiplayer.enabled && state.multiplayer.roomInfo?.role === 'guest';
+};
+
+/**
+ * 判断是否在联机模式中
+ */
+export const isInMultiplayerMode = (state: State): boolean => {
+  return state.multiplayer.enabled && state.multiplayer.roomInfo != null;
+};
+

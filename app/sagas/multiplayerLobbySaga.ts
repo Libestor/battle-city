@@ -1,7 +1,7 @@
-import { eventChannel } from 'redux-saga';
+import { eventChannel, buffers } from 'redux-saga';
 import { call, delay, put, race, take } from 'redux-saga/effects';
 import { push } from '../utils/router';
-import { A, startGame } from '../utils/actions';
+import { A, Action, startGame } from '../utils/actions';
 import {
   startGameCountdown,
   cancelGameCountdown,
@@ -15,15 +15,35 @@ import { SocketEvent, GameInitialState } from '../types/multiplayer-types';
 import { MULTI_PLAYERS_SEARCH_KEY } from '../utils/constants';
 import { setRandomSeed } from '../utils/common';
 
+const shouldCancelWatch = (action: Action) => {
+  if (action.type === A.DisableMultiplayer) {
+    return true;
+  }
+  if (action.type === A.SetRoomInfo && action.roomInfo == null) {
+    return true;
+  }
+  return false;
+};
+
+const shouldCancelCountdown = (action: Action) => {
+  if (shouldCancelWatch(action)) {
+    return true;
+  }
+  return action.type === A.SetOpponentConnected && action.connected === false;
+};
+
 /**
  * 创建socket事件通道
  */
 function createSocketChannel(event: SocketEvent) {
-  return eventChannel<GameInitialState | { timestamp: number }>(emit => {
-    const handler = (data: GameInitialState | { timestamp: number }) => emit(data);
-    socketService.on(event, handler);
-    return () => socketService.off(event, handler);
-  });
+  return eventChannel<GameInitialState | { timestamp: number }>(
+    emit => {
+      const handler = (data: GameInitialState | { timestamp: number }) => emit(data);
+      socketService.on(event, handler);
+      return () => socketService.off(event, handler);
+    },
+    buffers.sliding(1),
+  );
 }
 
 /**
@@ -35,7 +55,7 @@ function* countdownSaga() {
     yield put(updateCountdown(i));
     yield delay(1000);
   }
-  
+
   yield put(updateCountdown(0));
   return true;
 }
@@ -70,7 +90,7 @@ function* watchGameStart() {
       const result: any = yield race({
         start: take(startChannel),
         init: take(initChannel),
-        cancel: take([A.DisableMultiplayer, A.SetRoomInfo]),
+        cancel: take(shouldCancelWatch),
       });
 
       if (result.cancel) {
@@ -97,7 +117,7 @@ function* watchGameStart() {
 
         const countdownResult: any = yield race({
           countdown: call(countdownSaga),
-          cancel: take([A.SetOpponentConnected, A.DisableMultiplayer, A.SetRoomInfo]),
+          cancel: take(shouldCancelCountdown),
         });
 
         if (countdownResult.cancel) {
@@ -126,7 +146,7 @@ export default function* multiplayerLobbySaga() {
   while (true) {
     // 等待启用联机模式
     yield take(A.EnableMultiplayer);
-    
+
     // 启动监听
     const result: any = yield race({
       watchGame: call(watchGameStart),

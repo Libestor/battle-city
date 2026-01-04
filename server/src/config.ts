@@ -1,3 +1,35 @@
+type CorsOriginCallback = (err: Error | null, allow?: boolean) => void;
+
+const explicitOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+const localOriginPattern = /^http:\/\/(localhost|127\.0\.0\.1|\d{1,3}(?:\.\d{1,3}){3}):8080$/;
+
+function resolveCorsOrigin(origin: string | undefined | null, callback: CorsOriginCallback) {
+  if (!origin) {
+    callback(null, true);
+    return;
+  }
+
+  if (explicitOrigins.length > 0) {
+    if (explicitOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error(`CORS not allowed: ${origin}`));
+    return;
+  }
+
+  if (localOriginPattern.test(origin)) {
+    callback(null, true);
+    return;
+  }
+
+  callback(new Error(`CORS not allowed: ${origin}`));
+}
+
 // 环境变量配置
 export const config = {
   // 服务器端口
@@ -5,7 +37,7 @@ export const config = {
   
   // CORS配置
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:8080',
+    origin: resolveCorsOrigin,
     credentials: true,
   },
   

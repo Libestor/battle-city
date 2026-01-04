@@ -39,7 +39,6 @@ export class SocketService {
     this.notifyStatusChange();
 
     this.socket = io(this.serverUrl, {
-      transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: this.maxReconnectAttempts,
       reconnectionDelay: 1000,
@@ -351,3 +350,4 @@ export class SocketService {
 
 // 创建单例实例
 export const socketService = new SocketService();
+

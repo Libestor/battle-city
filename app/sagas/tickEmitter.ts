@@ -56,11 +56,11 @@ export default function* tickEmitter(options: TickEmitterOptions = {}) {
     let accumulation = 0
     while (true) {
       const { delta }: actions.Tick = yield take(tickChannel)
-      const {
-        game: { paused },
-      }: State = yield select()
-      if (!paused) {
-        accumulation += delta
+      const { game, multiplayer }: State = yield select()
+      if (!game.paused) {
+        const useFixedDelta = multiplayer.enabled && multiplayer.roomInfo != null
+        const step = useFixedDelta ? 1000 / 60 : delta
+        accumulation += step
         if (accumulation > 1000 / maxFPS) {
           yield put(actions.tick(accumulation / slow))
           yield put(actions.afterTick(accumulation / slow))
