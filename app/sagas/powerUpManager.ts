@@ -7,7 +7,7 @@ import { around, getTankSpot } from '../ai/spot-utils'
 import { MapRecord, PowerUpRecord, ScoreRecord, State, TanksMap } from '../types'
 import * as actions from '../utils/actions'
 import { A } from '../utils/actions'
-import { asRect, frame as f, getNextId, randint } from '../utils/common'
+import { asRect, frame as f, getNextId, randint, random } from '../utils/common'
 import {
   BLOCK_SIZE,
   N_MAP,
@@ -184,7 +184,7 @@ function determineWhichPowerUpToSpawn(state: State): PowerUpName {
   const eagleSpot = getTankSpot(state.map.eagle)
   const estMap = calculateFireEstimateMap(around(eagleSpot), getAllSpots(state.map), state.map)
   if (Array.from(estMap.keys()).some(t => t !== eagleSpot && getFireResist(estMap.get(t)) === 0)) {
-    if (Math.random() < 0.5) {
+    if (random() < 0.5) {
       return 'shovel'
     }
   }
@@ -195,7 +195,7 @@ function determineWhichPowerUpToSpawn(state: State): PowerUpName {
   const hasBasicTank =
     (player1Tank && player1Tank.level === 'basic') || (player2Tank && player2Tank.level === 'basic')
   if (hasBasicTank) {
-    if (Math.random() < 0.4) {
+    if (random() < 0.4) {
       return 'star'
     }
   }

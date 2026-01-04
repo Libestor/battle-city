@@ -1,59 +1,29 @@
-import { delay, put, race, select, take, call } from 'redux-saga/effects';
+import { eventChannel } from 'redux-saga';
+import { call, delay, put, race, take } from 'redux-saga/effects';
 import { push } from '../utils/router';
-import { State } from '../reducers';
 import { A, startGame } from '../utils/actions';
 import {
   startGameCountdown,
   cancelGameCountdown,
   updateCountdown,
   multiplayerGameStart,
+  setGameInitialState,
 } from '../utils/multiplayerActions';
 import { firstStageName } from '../stages';
+import { socketService } from '../utils/SocketService';
+import { SocketEvent, GameInitialState } from '../types/multiplayer-types';
+import { MULTI_PLAYERS_SEARCH_KEY } from '../utils/constants';
+import { setRandomSeed } from '../utils/common';
 
 /**
- * 监听对手连接状态，当双方都连接时启动倒计时
+ * 创建socket事件通道
  */
-function* watchOpponentConnection() {
-  while (true) {
-    // 等待对手连接
-    const action: any = yield take(A.SetOpponentConnected);
-    
-    // 只有当对手连接时才启动倒计时
-    if (!action.connected) {
-      // 对手断开，取消倒计时
-      yield put(cancelGameCountdown());
-      continue;
-    }
-    
-    const state: State = yield select();
-    const { multiplayer } = state;
-    
-    // 检查是否双方都已连接
-    if (multiplayer.opponentConnected && multiplayer.roomInfo) {
-      // 启动倒计时
-      yield put(startGameCountdown());
-      
-      // 执行倒计时逻辑
-      const result: any = yield race({
-        countdown: call(countdownSaga),
-        cancel: take([A.SetOpponentConnected, A.DisableMultiplayer, A.SetRoomInfo]),
-      });
-      
-      if (result.cancel) {
-        // 对手断开或离开大厅，取消倒计时
-        yield put(cancelGameCountdown());
-      } else if (result.countdown) {
-        // 倒计时结束，启动游戏
-        yield put(multiplayerGameStart());
-        
-        // 发出startGame action启动游戏（从第一关开始）
-        yield put(startGame(0));
-        
-        // 跳转到游戏场景
-        yield put(push(`/stage/${firstStageName}`));
-      }
-    }
-  }
+function createSocketChannel(event: SocketEvent) {
+  return eventChannel<GameInitialState | { timestamp: number }>(emit => {
+    const handler = (data: GameInitialState | { timestamp: number }) => emit(data);
+    socketService.on(event, handler);
+    return () => socketService.off(event, handler);
+  });
 }
 
 /**
@@ -71,6 +41,85 @@ function* countdownSaga() {
 }
 
 /**
+ * 等待服务器发起游戏开始信号，并同步初始状态
+ */
+function* watchGameStart() {
+  const startChannel = yield call(createSocketChannel, SocketEvent.GAME_START);
+  const initChannel = yield call(createSocketChannel, SocketEvent.GAME_STATE_INIT);
+  let pendingStart = false;
+  let countdownComplete = false;
+  let initialState: GameInitialState | null = null;
+
+  const maybeStartGame = function* () {
+    if (!pendingStart || !countdownComplete || !initialState) {
+      return;
+    }
+
+    yield put(multiplayerGameStart());
+    const stageIndex = Math.max(0, (initialState.mapId || 1) - 1);
+    yield put(startGame(stageIndex));
+    yield put(push(`/stage/${firstStageName}?${MULTI_PLAYERS_SEARCH_KEY}`));
+
+    pendingStart = false;
+    countdownComplete = false;
+    initialState = null;
+  };
+
+  try {
+    while (true) {
+      const result: any = yield race({
+        start: take(startChannel),
+        init: take(initChannel),
+        cancel: take([A.DisableMultiplayer, A.SetRoomInfo]),
+      });
+
+      if (result.cancel) {
+        pendingStart = false;
+        countdownComplete = false;
+        initialState = null;
+        setRandomSeed(null);
+        yield put(cancelGameCountdown());
+        continue;
+      }
+
+      if (result.init) {
+        initialState = result.init as GameInitialState;
+        yield put(setGameInitialState(initialState));
+        setRandomSeed(initialState.seed);
+        yield* maybeStartGame();
+        continue;
+      }
+
+      if (result.start) {
+        pendingStart = true;
+        countdownComplete = false;
+        yield put(startGameCountdown());
+
+        const countdownResult: any = yield race({
+          countdown: call(countdownSaga),
+          cancel: take([A.SetOpponentConnected, A.DisableMultiplayer, A.SetRoomInfo]),
+        });
+
+        if (countdownResult.cancel) {
+          pendingStart = false;
+          countdownComplete = false;
+          initialState = null;
+          setRandomSeed(null);
+          yield put(cancelGameCountdown());
+          continue;
+        }
+
+        countdownComplete = true;
+        yield* maybeStartGame();
+      }
+    }
+  } finally {
+    startChannel.close();
+    initChannel.close();
+  }
+}
+
+/**
  * 联机大厅主saga
  */
 export default function* multiplayerLobbySaga() {
@@ -79,9 +128,13 @@ export default function* multiplayerLobbySaga() {
     yield take(A.EnableMultiplayer);
     
     // 启动监听
-    yield race({
-      watchConnection: call(watchOpponentConnection),
+    const result: any = yield race({
+      watchGame: call(watchGameStart),
       leave: take(A.DisableMultiplayer),
     });
+
+    if (result.leave) {
+      setRandomSeed(null);
+    }
   }
 }

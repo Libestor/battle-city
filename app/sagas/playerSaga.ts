@@ -18,8 +18,15 @@ export default function* playerSaga(playerName: PlayerName, config: PlayerConfig
 
   while (true) {
     const { tankId }: actions.ActivatePlayer = yield take(playerActivated)
+    const state: State = yield select()
+    const multiplayerRole = state.multiplayer.roomInfo?.role
+    const isOnlineMultiplayer = state.multiplayer.enabled && multiplayerRole != null
+    const localPlayerName =
+      multiplayerRole === 'host' ? 'player-1' : multiplayerRole === 'guest' ? 'player-2' : null
+    const shouldEnableController = !isOnlineMultiplayer || playerName === localPlayerName
+
     const result = yield race({
-      controller: playerController(tankId, config),
+      ...(shouldEnableController ? { controller: playerController(tankId, config) } : {}),
       tank: playerTankSaga(playerName, tankId),
       stageEnd: take(A.EndStage),
     })
