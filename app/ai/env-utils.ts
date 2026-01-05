@@ -1,6 +1,6 @@
 import { List } from 'immutable'
 import { MapRecord, TankRecord, TanksMap } from '../types'
-import { asRect, getDirectionInfo } from '../utils/common'
+import { asRect, getDirectionInfo, random } from '../utils/common'
 import { BLOCK_SIZE, FIELD_SIZE, ITEM_SIZE_MAP, TANK_SIZE } from '../utils/constants'
 import IndexHelper from '../utils/IndexHelper'
 import { logAhead } from './logger'
@@ -162,11 +162,11 @@ export function getEnv(map: MapRecord, tanks: TanksMap, tank: TankRecord): TankE
 
 /** 根据目前AI-tank的环境信息, 决定AI-tank是否应该开火 */
 export function determineFire(tank: TankRecord, { barrierInfo, tankPosition: pos }: TankEnv) {
-  const random = Math.random()
+  const randomValue = random()
 
   const ahead = barrierInfo[tank.direction]
   if (canDestroy(ahead.type)) {
-    if (random < FireThreshhold.destroyable(ahead.length)) {
+    if (randomValue < FireThreshhold.destroyable(ahead.length)) {
       return true
     }
   }
@@ -174,7 +174,7 @@ export function determineFire(tank: TankRecord, { barrierInfo, tankPosition: pos
   // 坦克面向eagle且足够接近时, 增加开火概率
   const eagleForwardInfo = pos.eagle.getForwardInfo(tank.direction)
   if (eagleForwardInfo.offset <= 8) {
-    if (random < FireThreshhold.eagle(eagleForwardInfo.length)) {
+    if (randomValue < FireThreshhold.eagle(eagleForwardInfo.length)) {
       return true
     }
   }
@@ -183,13 +183,13 @@ export function determineFire(tank: TankRecord, { barrierInfo, tankPosition: pos
   if (pos.nearestPlayerTank) {
     const playerTankForwardInfo = pos.nearestPlayerTank.getForwardInfo(tank.direction)
     if (playerTankForwardInfo.offset <= 8) {
-      if (random < FireThreshhold.playerTank(playerTankForwardInfo.length)) {
+      if (randomValue < FireThreshhold.playerTank(playerTankForwardInfo.length)) {
         return true
       }
     }
   }
 
-  return random < FireThreshhold.idle()
+  return randomValue < FireThreshhold.idle()
 }
 
 /** 向前观察，返回前方的障碍物类型与距离 */

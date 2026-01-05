@@ -32,8 +32,9 @@ function* addBotHelper() {
         yield put(actions.removeFirstRemainingBot())
         const level = game.remainingBots.first()
         const hp = level === 'armor' ? 4 : 1
+        const tankId = getNextId('tank')
         const tank = new TankRecord({
-          tankId: getNextId('tank'),
+          tankId,
           x: spawnPos.x,
           y: spawnPos.y,
           side: 'bot',
@@ -47,6 +48,7 @@ function* addBotHelper() {
         yield put(actions.setIsSpawningBotTank(true))
         yield spawnTank(tank, spawnSpeed)
         yield put(actions.setIsSpawningBotTank(false))
+
         yield fork(botSaga, tank.tankId)
       }
     }
@@ -57,6 +59,12 @@ function* addBotHelper() {
 }
 
 export default function* botMasterSaga() {
+  // Guest 模式下不运行 AI
+  const isGuest: boolean = yield select(selectors.isGuest)
+  if (isGuest) {
+    return
+  }
+
   const inMultiPlayersMode = yield select(selectors.isInMultiPlayersMode)
   const maxBotCount = inMultiPlayersMode ? 4 : 2
 

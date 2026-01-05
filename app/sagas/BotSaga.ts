@@ -11,6 +11,12 @@ import directionController from './directionController'
 import fireController from './fireController'
 
 export default function* botSaga(tankId: TankId) {
+  // Guest 模式下不运行 AI 逻辑，坦克由 Host 状态同步控制
+  const isGuest: boolean = yield select(selectors.isGuest)
+  if (isGuest) {
+    return
+  }
+
   const ctx = new Bot(tankId)
   try {
     yield takeEvery(hitPredicate, hitHandler)
@@ -80,7 +86,8 @@ export default function* botSaga(tankId: TankId) {
       const { bulletId }: actions.BeforeRemoveBullet = yield take(actions.A.BeforeRemoveBullet)
       const { bullets }: State = yield select()
       const bullet = bullets.get(bulletId)
-      if (bullet.tankId === tankId) {
+      // 添加空值检查：子弹可能已被删除
+      if (bullet && bullet.tankId === tankId) {
         ctx.noteChannel.put({ type: 'bullet-complete', bullet })
       }
     }

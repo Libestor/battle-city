@@ -132,6 +132,11 @@ export default function MultiplayerLobby() {
   };
 
   const handleBack = () => {
+    if (multiplayer.roomInfo) {
+      socketService.leaveRoom();
+    }
+    socketService.disconnect();
+    dispatch(disableMultiplayer());
     window.history.back();
   };
 

@@ -1,14 +1,36 @@
-import { delay, put, race, select, take, call } from 'redux-saga/effects';
+import { eventChannel, buffers } from 'redux-saga';
+import { call, delay, put, race, take } from 'redux-saga/effects';
 import { push } from '../utils/router';
-import { State } from '../reducers';
-import { A, startGame } from '../utils/actions';
+import { A, Action, startGame } from '../utils/actions';
 import {
   startGameCountdown,
   cancelGameCountdown,
   updateCountdown,
   multiplayerGameStart,
+  setGameInitialState,
 } from '../utils/multiplayerActions';
 import { firstStageName } from '../stages';
+import { socketService } from '../utils/SocketService';
+import { SocketEvent, GameInitialState } from '../types/multiplayer-types';
+import { MULTI_PLAYERS_SEARCH_KEY } from '../utils/constants';
+import { setRandomSeed } from '../utils/common';
+
+const shouldCancelWatch = (action: Action) => {
+  if (action.type === A.DisableMultiplayer) {
+    return true;
+  }
+  if (action.type === A.SetRoomInfo && action.roomInfo == null) {
+    return true;
+  }
+  return false;
+};
+
+const shouldCancelCountdown = (action: Action) => {
+  if (shouldCancelWatch(action)) {
+    return true;
+  }
+  return action.type === A.SetOpponentConnected && action.connected === false;
+};
 
 /**
  * 监听游戏初始状态，当服务器发送同步状态后启动倒计时
@@ -63,9 +85,88 @@ function* countdownSaga() {
     yield put(updateCountdown(i));
     yield delay(1000);
   }
-  
+
   yield put(updateCountdown(0));
   return true;
+}
+
+/**
+ * 等待服务器发起游戏开始信号，并同步初始状态
+ */
+function* watchGameStart() {
+  const startChannel = yield call(createSocketChannel, SocketEvent.GAME_START);
+  const initChannel = yield call(createSocketChannel, SocketEvent.GAME_STATE_INIT);
+  let pendingStart = false;
+  let countdownComplete = false;
+  let initialState: GameInitialState | null = null;
+
+  const maybeStartGame = function* () {
+    if (!pendingStart || !countdownComplete || !initialState) {
+      return;
+    }
+
+    yield put(multiplayerGameStart());
+    const stageIndex = Math.max(0, (initialState.mapId || 1) - 1);
+    yield put(startGame(stageIndex));
+    yield put(push(`/stage/${firstStageName}?${MULTI_PLAYERS_SEARCH_KEY}`));
+
+    pendingStart = false;
+    countdownComplete = false;
+    initialState = null;
+  };
+
+  try {
+    while (true) {
+      const result: any = yield race({
+        start: take(startChannel),
+        init: take(initChannel),
+        cancel: take(shouldCancelWatch),
+      });
+
+      if (result.cancel) {
+        pendingStart = false;
+        countdownComplete = false;
+        initialState = null;
+        setRandomSeed(null);
+        yield put(cancelGameCountdown());
+        continue;
+      }
+
+      if (result.init) {
+        initialState = result.init as GameInitialState;
+        yield put(setGameInitialState(initialState));
+        setRandomSeed(initialState.seed);
+        yield* maybeStartGame();
+        continue;
+      }
+
+      if (result.start) {
+        pendingStart = true;
+        countdownComplete = false;
+        yield put(startGameCountdown());
+
+        const countdownResult: any = yield race({
+          countdown: call(countdownSaga),
+          cancel: take(shouldCancelCountdown),
+        });
+
+        if (countdownResult.cancel) {
+          pendingStart = false;
+          countdownComplete = false;
+          initialState = null;
+          setRandomSeed(null);
+          yield put(cancelGameCountdown());
+          continue;
+        }
+
+        countdownComplete = true;
+        yield* maybeStartGame();
+      }
+    }
+  } finally {
+    startChannel.close();
+    initChannel.close();
+  }
 }
 
 /**
@@ -81,5 +182,9 @@ export default function* multiplayerLobbySaga() {
       watchGameInit: call(watchGameInitialState),
       leave: take(A.DisableMultiplayer),
     });
+
+    if (result.leave) {
+      setRandomSeed(null);
+    }
   }
 }

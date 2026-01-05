@@ -6,7 +6,7 @@ import TextRecord from '../types/TextRecord'
 import * as actions from '../utils/actions'
 import { A } from '../utils/actions'
 import { getNextId } from '../utils/common'
-import { BLOCK_SIZE, PLAYER_CONFIGS } from '../utils/constants'
+import { BLOCK_SIZE, PLAYER_CONFIGS, MULTIPLAYER_CONFIG } from '../utils/constants'
 import * as selectors from '../utils/selectors'
 import Timing from '../utils/Timing'
 import botMasterSaga from './botMasterSaga'
@@ -123,29 +123,63 @@ export default function* gameSaga(action: actions.StartGame | actions.ResetGame)
     players = [playerSaga('player-1', PLAYER_CONFIGS.player1)]
   }
 
-  const result = yield race({
-    tick: tickEmitter({ bindESC: true }),
-    players: all(players),
-    ai: botMasterSaga(),
-    powerUp: powerUpManager(),
-    bullets: bulletsSaga(),
-    // 上面几个 saga 在一个 gameSaga 的生命周期内被认为是后台服务
-    // 当 stage-flow 退出（或者是用户直接离开了game-scene）的时候，自动取消上面几个后台服务
-    flow: stageFlow(action.stageIndex),
-    leave: take(A.LeaveGameScene),
-  })
+  if (isOnlineMultiplayer) {
+    // 服务器权威模式：客户端只负责输入和渲染
+    // 游戏逻辑（AI、子弹、碰撞）由服务器运行
+    const role = multiplayerState.roomInfo!.role
+    console.log(`[Multiplayer] Server-Authoritative mode, role: ${role}`)
 
-  if (DEV.LOG) {
-    if (result.leave) {
-      console.log('LEAVE GAME SCENE')
+    // 根据角色确定本地玩家
+    const localPlayerName = role === 'host' ? 'player-1' : 'player-2'
+    // 联机模式统一使用 WASD + 空格
+    const localPlayerConfig = {
+      ...MULTIPLAYER_CONFIG,
+      color: role === 'host' ? 'yellow' as const : 'green' as const,
+      spawnPos: role === 'host' ? PLAYER_CONFIGS.player1.spawnPos : PLAYER_CONFIGS.player2.spawnPos,
+    }
+
+    // 只启动本地玩家的控制器（用于发送输入）
+    const players = [playerSaga(localPlayerName as PlayerName, localPlayerConfig)]
+
+    yield race({
+      tick: tickEmitter({ bindESC: true }),
+      players: all(players),
+      flow: stageFlow(action.stageIndex),
+      leave: take(A.LeaveGameScene),
+    })
+  } else {
+    // 单机模式或本地双人模式：正常运行所有游戏逻辑
+    const players = [playerSaga('player-1', PLAYER_CONFIGS.player1)]
+    if (isMultiplayerMode) {
+      // 本地双人模式
+      players.push(playerSaga('player-2', PLAYER_CONFIGS.player2))
+    }
+
+    const result = yield race({
+      tick: tickEmitter({ bindESC: true }),
+      players: all(players),
+      ai: botMasterSaga(),
+      powerUp: powerUpManager(),
+      bullets: bulletsSaga(),
+      // 上面几个 saga 在一个 gameSaga 的生命周期内被认为是后台服务
+      // 当 stage-flow 退出（或者是用户直接离开了game-scene）的时候，自动取消上面几个后台服务
+      flow: stageFlow(action.stageIndex),
+      leave: take(A.LeaveGameScene),
+    })
+
+    if (DEV.LOG) {
+      if (result.leave) {
+        console.log('LEAVE GAME SCENE')
+      }
+    }
+
+    if (result.flow) {
+      DEV.LOG && console.log('GAME ENDED')
+      const { router }: State = yield select()
+      yield put(replace(`/gameover${router.location.search}`))
     }
   }
 
-  if (result.flow) {
-    DEV.LOG && console.log('GAME ENDED')
-    const { router }: State = yield select()
-    yield put(replace(`/gameover${router.location.search}`))
-  }
   yield put(actions.beforeEndGame())
   yield put(actions.endGame())
 }

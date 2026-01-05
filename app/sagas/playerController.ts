@@ -7,6 +7,7 @@ import directionController from './directionController'
 import fireController from './fireController'
 import { socketService } from '../utils/SocketService'
 import { State } from '../reducers'
+import * as selectors from '../utils/selectors'
 
 // 输入历史记录（用于客户端预测和状态校正）
 interface InputHistoryEntry {
@@ -36,12 +37,22 @@ export default function* playerController(tankId: TankId, config: PlayerConfig) 
   try {
     document.addEventListener('keydown', onKeyDown)
     document.addEventListener('keyup', onKeyUp)
-    yield all([
-      directionController(tankId, getPlayerInput),
-      fireController(tankId, () => firePressed || firePressing),
-      resetFirePressedEveryTick(),
-      sendInputToServer(),
-    ])
+
+    if (isOnlineMultiplayer) {
+      // 服务器权威模式：只发送输入到服务器
+      // 坦克状态由服务器广播同步
+      yield all([
+        resetFirePressedEveryTick(),
+        sendInputToServer(),
+      ])
+    } else {
+      // 单机模式或本地双人模式：运行本地控制器
+      yield all([
+        directionController(tankId, getPlayerInput),
+        fireController(tankId, () => firePressed || firePressing),
+        resetFirePressedEveryTick(),
+      ])
+    }
   } finally {
     document.removeEventListener('keydown', onKeyDown)
     document.removeEventListener('keyup', onKeyUp)
@@ -109,7 +120,7 @@ export default function* playerController(tankId: TankId, config: PlayerConfig) 
   function* sendInputToServer() {
     while (true) {
       yield take(A.Tick)
-      
+
       // 检查是否启用联机模式
       const state: State = yield select()
       if (!state.multiplayer.enabled || !state.multiplayer.roomInfo) {
@@ -124,9 +135,10 @@ export default function* playerController(tankId: TankId, config: PlayerConfig) 
       
       // 构建当前输入状态
       const currentDirection = pressed.length > 0 ? last(pressed) : null
-      const currentFire = firePressing || firePressed
-      const inputState = JSON.stringify({ direction: currentDirection, fire: currentFire })
-      
+      const isMoving = pressed.length > 0
+      const isFiring = firePressing || firePressed
+      const inputState = JSON.stringify({ direction: currentDirection, moving: isMoving, firing: isFiring })
+
       // 节流：只有输入状态改变时才发送
       if (inputState !== lastSentInput) {
         lastSentInput = inputState
@@ -152,8 +164,10 @@ export default function* playerController(tankId: TankId, config: PlayerConfig) 
         
         // 发送输入到服务器（带序列号）
         socketService.sendPlayerInput({
-          type: currentFire ? 'fire' : (currentDirection ? 'move' : 'direction'),
+          type: 'state',
           direction: currentDirection || undefined,
+          moving: isMoving,
+          firing: isFiring,
           timestamp: Date.now(),
           sequenceId: inputSequenceId,
         })

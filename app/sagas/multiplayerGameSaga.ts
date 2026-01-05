@@ -10,19 +10,52 @@ import * as multiplayerActions from '../utils/multiplayerActions';
 import fireController from './fireController';
 
 /**
- * 创建对手输入事件通道
+ * 创建服务器状态同步事件通道
  */
-function createOpponentInputChannel(): EventChannel<PlayerInput> {
+function createStateSyncChannel(): EventChannel<ServerStateSyncPayload> {
   return eventChannel(emitter => {
-    const handler = (input: PlayerInput) => {
-      emitter(input);
+    const handler = (data: ServerStateSyncPayload) => {
+      emitter(data);
     };
 
-    socketService.on(SocketEvent.OPPONENT_INPUT, handler);
+    socketService.on(SocketEvent.STATE_SYNC, handler);
 
-    // 返回取消订阅函数
     return () => {
-      socketService.off(SocketEvent.OPPONENT_INPUT, handler);
+      socketService.off(SocketEvent.STATE_SYNC, handler);
+    };
+  });
+}
+
+/**
+ * 创建地图变化事件通道
+ */
+function createMapChangesChannel(): EventChannel<MapChangesPayload> {
+  return eventChannel(emitter => {
+    const handler = (data: MapChangesPayload) => {
+      emitter(data);
+    };
+
+    socketService.on(SocketEvent.MAP_CHANGES, handler);
+
+    return () => {
+      socketService.off(SocketEvent.MAP_CHANGES, handler);
+    };
+  });
+}
+
+/**
+ * 创建Pong响应通道
+ */
+function createPongChannel(): EventChannel<any> {
+  return eventChannel(emitter => {
+    const handler = (data: any) => {
+      emitter(data);
+    };
+
+    socketService.on(SocketEvent.PONG, handler);
+
+    return () => {
+      socketService.off(SocketEvent.PONG, handler);
     };
   });
 }
@@ -100,16 +133,30 @@ function createOpponentReconnectChannel(): EventChannel<void> {
 /**
  * 监听对手输入事件
  */
-function* watchOpponentInput() {
-  const channel: EventChannel<PlayerInput> = yield call(createOpponentInputChannel);
+function* explosionFromBulletLocal(cx: number, cy: number) {
+  const bulletExplosionShapeTiming: [ExplosionShape, number][] = [
+    ['s0', f(4)],
+    ['s1', f(3)],
+    ['s2', f(2)],
+  ];
 
+  const explosionId = getNextId('explosion');
   try {
-    while (true) {
-      const input: PlayerInput = yield take(channel);
-      yield call(handleOpponentInput, input);
+    for (const [shape, time] of bulletExplosionShapeTiming) {
+      yield put(
+        actions.setExplosion(
+          new ExplosionRecord({
+            cx,
+            cy,
+            shape,
+            explosionId,
+          }),
+        ),
+      );
+      yield Timing.delay(time);
     }
   } finally {
-    channel.close();
+    yield put(actions.removeExplosion(explosionId));
   }
 }
 
@@ -326,18 +373,17 @@ function* handleGameStateEvent(event: GameStateEvent) {
 // 存储对手射击状态
 let opponentFireState = {
   firing: false,
-  tankId: null as TankId | null,
 };
 
 /**
- * 获取对手是否应该射击
+ * 更新本地输入状态（由 playerController 调用）
  */
-export function shouldOpponentFire(tankId: TankId): boolean {
-  return opponentFireState.tankId === tankId && opponentFireState.firing;
+export function updateLocalInput(direction: 'up' | 'down' | 'left' | 'right' | null, moving: boolean, firing: boolean) {
+  localInputState = { direction, moving, firing };
 }
 
 /**
- * 处理对手输入
+ * 发送本地玩家输入到服务器
  */
 function* handleOpponentInput(input: PlayerInput) {
   const state: State = yield select();
@@ -346,6 +392,13 @@ function* handleOpponentInput(input: PlayerInput) {
   if (!state.multiplayer.enabled || !state.multiplayer.roomInfo) {
     return;
   }
+}
+
+/**
+ * 应用服务器状态到本地 Redux store
+ */
+function* applyServerState(serverState: ServerStateSyncPayload) {
+  const state: State = yield select();
 
   // 确定对手坦克ID：通过对手的 player 状态获取
   const role = state.multiplayer.roomInfo.role;
@@ -366,42 +419,149 @@ function* handleOpponentInput(input: PlayerInput) {
     return;
   }
 
-  // 根据输入类型应用动作
-  if (input.type === 'move' && input.direction) {
-    // 移动或转向
-    if (input.direction !== opponentTank.direction) {
-      // 转向
-      yield put(actions.move(opponentTank.set('direction', input.direction)));
+  // 同步坦克状态
+  for (const tankData of serverState.tanks) {
+    const existingTank = state.tanks.get(tankData.tankId);
+
+    if (existingTank) {
+      // 更新现有坦克
+      const updatedTank = existingTank.merge({
+        x: tankData.x,
+        y: tankData.y,
+        direction: tankData.direction,
+        moving: tankData.moving,
+        hp: tankData.hp,
+        alive: tankData.alive,
+        helmetDuration: tankData.helmetDuration,
+        frozenTimeout: tankData.frozenTimeout,
+        cooldown: tankData.cooldown,
+      });
+      yield put(actions.move(updatedTank));
+
+      // 同步移动状态
+      if (tankData.moving && !existingTank.moving) {
+        yield put(actions.startMove(tankData.tankId));
+      } else if (!tankData.moving && existingTank.moving) {
+        yield put(actions.stopMove(tankData.tankId));
+      }
+
+      // 处理死亡 - 添加爆炸动画和音效
+      if (!tankData.alive && existingTank.alive) {
+        yield put(actions.setTankToDead(tankData.tankId));
+        // 播放爆炸音效和动画
+        yield put(actions.playSound('explosion_1'));
+        yield fork(tankExplosionLocal, existingTank.x + 8, existingTank.y + 8);
+      }
     } else {
-      // 继续移动
-      if (!opponentTank.moving) {
-        yield put(actions.startMove(opponentTankId));
+      // 创建新坦克 - 播放重生音效
+      const newTank = new TankRecord({
+        tankId: tankData.tankId,
+        x: tankData.x,
+        y: tankData.y,
+        direction: tankData.direction,
+        moving: tankData.moving,
+        side: tankData.side,
+        level: tankData.level,
+        hp: tankData.hp,
+        alive: tankData.alive,
+        color: tankData.color,
+        helmetDuration: tankData.helmetDuration,
+        frozenTimeout: tankData.frozenTimeout,
+        cooldown: tankData.cooldown,
+        withPowerUp: tankData.withPowerUp,
+      });
+      yield put(actions.addTank(newTank));
+    }
+  }
+
+  // 移除服务器端不存在的坦克
+  const serverTankIds = new Set(serverState.tanks.map(t => t.tankId));
+  for (const [tankId, tank] of state.tanks.entries()) {
+    if (!serverTankIds.has(tankId) && tank.alive) {
+      yield put(actions.setTankToDead(tankId));
+    }
+  }
+
+  // 同步子弹状态 - 使用 updateBullets 批量更新
+  const serverBulletIds = new Set(serverState.bullets.map(b => b.bulletId));
+
+  // 检测消失的子弹（本地有但服务器没有），生成本地爆炸效果
+  for (const [bulletId, bullet] of state.bullets.entries()) {
+    if (!serverBulletIds.has(bulletId)) {
+      // 子弹消失，在其位置生成爆炸效果（使用 fork 异步执行）
+      yield fork(explosionFromBulletLocal, bullet.x + 2, bullet.y + 2);
+    }
+  }
+
+  let updatedBulletsMap = IMap<BulletId, BulletRecord>();
+  for (const bulletData of serverState.bullets) {
+    const newBullet = new BulletRecord({
+      bulletId: bulletData.bulletId,
+      x: bulletData.x,
+      y: bulletData.y,
+      direction: bulletData.direction,
+      speed: bulletData.speed,
+      tankId: bulletData.tankId,
+      power: bulletData.power,
+    });
+    updatedBulletsMap = updatedBulletsMap.set(bulletData.bulletId, newBullet);
+  }
+
+  // 批量更新子弹
+  yield put(actions.updateBullets(updatedBulletsMap));
+
+  // 同步完整地图状态（仅在首次接收时，即 map 字段存在时）
+  if (serverState.map && serverState.map.bricks) {
+    const bricksToRemove: number[] = [];
+    const currentBricks = state.map.bricks;
+
+    for (let i = 0; i < serverState.map.bricks.length; i++) {
+      // 如果服务器端砖块已被破坏，且本地砖块还存在
+      if (!serverState.map.bricks[i] && currentBricks.get(i) === true) {
+        bricksToRemove.push(i);
       }
     }
-  } else if (input.type === 'fire') {
-    // 设置射击状态
-    opponentFireState = {
-      firing: true,
-      tankId: opponentTankId,
-    };
-  } else if (input.type === 'direction' && input.direction) {
-    // 仅转向
-    yield put(actions.move(opponentTank.set('direction', input.direction)));
-  } else {
-    // 停止移动
-    if (opponentTank.moving) {
-      yield put(actions.stopMove(opponentTankId));
+
+    if (bricksToRemove.length > 0) {
+      yield put(actions.removeBricks(ISet(bricksToRemove)));
     }
   }
 }
 
 /**
- * 每个tick重置对手射击状态
+ * 应用地图变化（增量更新）
  */
-function* resetOpponentFireState() {
-  while (true) {
-    yield take(A.Tick);
-    opponentFireState.firing = false;
+function* applyMapChanges(mapChanges: MapChangesPayload) {
+  const state: State = yield select();
+
+  if (!state.multiplayer.enabled) {
+    return;
+  }
+
+  // 移除被破坏的砖块
+  if (mapChanges.bricksDestroyed.length > 0) {
+    yield put(actions.removeBricks(ISet(mapChanges.bricksDestroyed)));
+    // 本地播放砖块摧毁音效（不广播）
+    yield put(actions.playSound('bullet_hit_2'));
+  }
+
+  // 移除被破坏的钢块（如果需要的话）
+  // 目前游戏中钢块破坏较少，可以暂时忽略或添加类似逻辑
+}
+
+/**
+ * 接收地图变化并更新本地状态
+ */
+function* receiveMapChanges() {
+  const channel: EventChannel<MapChangesPayload> = yield call(createMapChangesChannel);
+
+  try {
+    while (true) {
+      const mapChanges: MapChangesPayload = yield take(channel);
+      yield call(applyMapChanges, mapChanges);
+    }
+  } finally {
+    channel.close();
   }
 }
 
@@ -411,45 +571,34 @@ function* resetOpponentFireState() {
 function* pingLoop() {
   while (true) {
     const state: State = yield select();
-    
+
     if (state.multiplayer.enabled && state.multiplayer.roomInfo) {
       const startTime = Date.now();
       socketService.sendPing();
-      
-      // 等待pong响应（最多1秒）
+
       const channel: EventChannel<any> = yield call(createPongChannel);
-      const { pong, timeout }: any = yield race({
+      const { pong }: any = yield race({
         pong: take(channel),
         timeout: delay(1000),
       });
       channel.close();
-      
+
       if (pong) {
         const ping = Date.now() - startTime;
         yield put(actions.updateNetworkStats({ ping, lastPingTime: Date.now() }));
       }
     }
-    
-    // 每2秒ping一次
+
     yield delay(2000);
   }
 }
 
 /**
- * 创建pong事件通道
+ * 判断当前客户端是否为 Host
  */
-function createPongChannel(): EventChannel<any> {
-  return eventChannel(emitter => {
-    const handler = (data: any) => {
-      emitter(data);
-    };
-
-    socketService.on(SocketEvent.PONG, handler);
-
-    return () => {
-      socketService.off(SocketEvent.PONG, handler);
-    };
-  });
+export function* isHost() {
+  const state: State = yield select();
+  return state.multiplayer.enabled && state.multiplayer.roomInfo?.role === 'host';
 }
 
 /**
@@ -466,7 +615,6 @@ function getOpponentTankIdFromState(state: State): TankId {
  */
 export default function* multiplayerGameSaga() {
   while (true) {
-    // 等待游戏开始
     yield take(A.MultiplayerGameStart);
 
     yield race({

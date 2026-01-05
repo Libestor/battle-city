@@ -39,7 +39,6 @@ export class SocketService {
     this.notifyStatusChange();
 
     this.socket = io(this.serverUrl, {
-      transports: ['websocket'],
       reconnection: true,
       reconnectionAttempts: this.maxReconnectAttempts,
       reconnectionDelay: 1000,
@@ -168,6 +167,16 @@ export class SocketService {
     // 游戏状态事件
     this.socket.on(SocketEvent.GAME_STATE_EVENT, (data: GameStateEvent) => {
       this.emit(SocketEvent.GAME_STATE_EVENT, data);
+    });
+
+    // 服务器状态同步（服务器权威模式）
+    this.socket.on(SocketEvent.STATE_SYNC, (data: any) => {
+      this.emit(SocketEvent.STATE_SYNC, data);
+    });
+
+    // 地图变化增量更新
+    this.socket.on(SocketEvent.MAP_CHANGES, (data: any) => {
+      this.emit(SocketEvent.MAP_CHANGES, data);
     });
 
     // Pong响应
@@ -351,3 +360,4 @@ export class SocketService {
 
 // 创建单例实例
 export const socketService = new SocketService();
+

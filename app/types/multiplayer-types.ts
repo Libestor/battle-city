@@ -9,12 +9,12 @@ export enum SocketEvent {
   ROOM_ERROR = 'room_error',
   PLAYER_JOINED = 'player_joined',
   PLAYER_LEFT = 'player_left',
-  
+
   // 游戏控制
   GAME_START = 'game_start',
   GAME_OVER = 'game_over',
   GAME_STATE_INIT = 'game_state_init',
-  
+
   // 输入同步
   PLAYER_INPUT = 'player_input',
   OPPONENT_INPUT = 'opponent_input',
@@ -22,8 +22,9 @@ export enum SocketEvent {
   
   // 状态同步
   GAME_STATE_EVENT = 'game_state_event',
-  STATE_SYNC = 'state_sync',
-  
+  STATE_SYNC = 'state_sync',  // 服务器权威模式：接收完整状态
+  MAP_CHANGES = 'map_changes',  // 地图变化增量更新
+
   // 连接管理
   PING = 'ping',
   PONG = 'pong',
@@ -40,10 +41,12 @@ export type PlayerRole = 'host' | 'guest';
 // 连接状态
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'error';
 
-// 玩家输入数据
+// 玩家输入数据（完整状态）
 export interface PlayerInput {
-  type: 'move' | 'fire' | 'direction';
-  direction?: 'up' | 'down' | 'left' | 'right';
+  type: 'state';  // 使用统一的状态类型
+  direction?: 'up' | 'down' | 'left' | 'right';  // 当前方向
+  moving: boolean;  // 是否正在移动
+  firing: boolean;  // 是否正在开火
   timestamp: number;
   sequenceId?: number; // 输入序列号（用于客户端预测）
 }
@@ -67,6 +70,7 @@ export interface GameStateEvent {
   type: GameStateEventType;
   data: any;
   timestamp: number;
+  sender?: 'host' | 'guest';  // 发送者角色
 }
 
 // 地图破坏事件数据

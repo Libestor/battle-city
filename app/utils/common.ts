@@ -148,8 +148,30 @@ export class DefaultMap<K, V> extends Map<K, V> {
   }
 }
 
+let seededRandomState: number | null = null
+
+export function setRandomSeed(seed: number | null) {
+  seededRandomState = seed == null ? null : seed
+}
+
+export function random() {
+  if (seededRandomState == null) {
+    return Math.random()
+  }
+  seededRandomState = (seededRandomState * 9301 + 49297) % 233280
+  return seededRandomState / 233280
+}
+
 export function randint(start: number, end: number) {
-  return Math.floor(Math.random() * (end - start)) + start
+  return Math.floor(random() * (end - start)) + start
+}
+
+export function sampleWithRandom<T>(items: ReadonlyArray<T>): T | null {
+  if (!items || items.length === 0) {
+    return null
+  }
+  const index = Math.floor(random() * items.length)
+  return items[index]
 }
 
 export const round8 = (x: number) => Math.round(x / 8) * 8
