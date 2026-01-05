@@ -16,14 +16,13 @@ function* addBotHelper() {
   try {
     while (true) {
       yield take(reqChannel)
-
-      // Guest 模式下跳过 AI 生成，等待 Host 状态广播
-      const isGuest: boolean = yield select(selectors.isGuest)
-      if (isGuest) {
+      const { game, stages, multiplayer }: State = yield select()
+      
+      // 联机模式下禁用本地敌人生成，由服务端控制
+      if (multiplayer.enabled && multiplayer.roomInfo) {
         continue
       }
-
-      const { game, stages }: State = yield select()
+      
       if (!game.remainingBots.isEmpty()) {
         let spawnPos: Point = yield select(selectors.availableSpawnPosition)
         while (spawnPos == null) {

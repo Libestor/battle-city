@@ -9,6 +9,19 @@ import { socketService } from '../utils/SocketService'
 import { State } from '../reducers'
 import * as selectors from '../utils/selectors'
 
+// 输入历史记录（用于客户端预测和状态校正）
+interface InputHistoryEntry {
+  sequenceId: number;
+  direction: Direction | null;
+  fire: boolean;
+  timestamp: number;
+  tankState: {
+    x: number;
+    y: number;
+    direction: Direction;
+  };
+}
+
 // 一个 playerController 实例对应一个人类玩家(用户)的控制器.
 // 参数playerName用来指定人类玩家的玩家名称, config为该玩家的操作配置.
 // playerController 将启动 fireController 与 directionController, 从而控制人类玩家的坦克
@@ -17,10 +30,9 @@ export default function* playerController(tankId: TankId, config: PlayerConfig) 
   let firePressed = false // 用来记录上一个tick内 玩家是否按下过fire键
   const pressed: Direction[] = [] // 用来记录上一个tick内, 玩家按下过的方向键
   let lastSentInput: string | null = null // 上次发送的输入状态（用于节流）
-
-  // 检查是否为联机模式（服务器权威模式）
-  const multiplayerState: State['multiplayer'] = yield select((s: State) => s.multiplayer)
-  const isOnlineMultiplayer = multiplayerState.enabled && multiplayerState.roomInfo != null
+  let inputSequenceId = 0 // 输入序列号
+  const inputHistory: InputHistoryEntry[] = [] // 输入历史记录（最多保存100个）
+  const MAX_HISTORY_SIZE = 100
 
   try {
     document.addEventListener('keydown', onKeyDown)
@@ -114,7 +126,13 @@ export default function* playerController(tankId: TankId, config: PlayerConfig) 
       if (!state.multiplayer.enabled || !state.multiplayer.roomInfo) {
         continue
       }
-
+      
+      // 获取当前坦克状态
+      const tank: TankRecord = yield select((s: State) => s.tanks.get(tankId))
+      if (!tank) {
+        continue
+      }
+      
       // 构建当前输入状态
       const currentDirection = pressed.length > 0 ? last(pressed) : null
       const isMoving = pressed.length > 0
@@ -124,15 +142,40 @@ export default function* playerController(tankId: TankId, config: PlayerConfig) 
       // 节流：只有输入状态改变时才发送
       if (inputState !== lastSentInput) {
         lastSentInput = inputState
-
-        // 发送当前输入状态到服务器
-        // direction 为 null 时服务器会保持坦克当前方向
+        inputSequenceId++
+        
+        // 记录输入历史（用于客户端预测和状态校正）
+        inputHistory.push({
+          sequenceId: inputSequenceId,
+          direction: currentDirection,
+          fire: currentFire,
+          timestamp: Date.now(),
+          tankState: {
+            x: tank.x,
+            y: tank.y,
+            direction: tank.direction,
+          },
+        })
+        
+        // 限制历史记录大小
+        if (inputHistory.length > MAX_HISTORY_SIZE) {
+          inputHistory.shift()
+        }
+        
+        // 发送输入到服务器（带序列号）
         socketService.sendPlayerInput({
           type: 'state',
           direction: currentDirection || undefined,
           moving: isMoving,
           firing: isFiring,
           timestamp: Date.now(),
+          sequenceId: inputSequenceId,
+        })
+        
+        console.log(`[Client Prediction] Sent input #${inputSequenceId}:`, {
+          direction: currentDirection,
+          fire: currentFire,
+          position: { x: tank.x, y: tank.y },
         })
       }
     }
