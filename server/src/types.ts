@@ -142,6 +142,8 @@ export interface BulletState {
   bulletId: number;
   x: number;
   y: number;
+  lastX: number;  // 上一帧位置，用于 MBR 碰撞检测
+  lastY: number;
   direction: Direction;
   speed: number;
   tankId: number;

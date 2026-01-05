@@ -12,8 +12,10 @@ import {
   ServerBulletState,
 } from '../types/multiplayer-types';
 import * as actions from '../utils/actions';
-import { TankRecord, BulletRecord } from '../types';
+import { TankRecord, BulletRecord, ExplosionRecord } from '../types';
 import { Map as IMap, Set as ISet } from 'immutable';
+import { getNextId, frame as f } from '../utils/common';
+import Timing from '../utils/Timing';
 
 /**
  * 创建服务器状态同步事件通道
@@ -47,6 +49,36 @@ function createPongChannel(): EventChannel<any> {
       socketService.off(SocketEvent.PONG, handler);
     };
   });
+}
+
+/**
+ * 本地子弹爆炸动画（不广播）
+ */
+function* explosionFromBulletLocal(cx: number, cy: number) {
+  const bulletExplosionShapeTiming: [ExplosionShape, number][] = [
+    ['s0', f(4)],
+    ['s1', f(3)],
+    ['s2', f(2)],
+  ];
+
+  const explosionId = getNextId('explosion');
+  try {
+    for (const [shape, time] of bulletExplosionShapeTiming) {
+      yield put(
+        actions.setExplosion(
+          new ExplosionRecord({
+            cx,
+            cy,
+            shape,
+            explosionId,
+          }),
+        ),
+      );
+      yield Timing.delay(time);
+    }
+  } finally {
+    yield put(actions.removeExplosion(explosionId));
+  }
 }
 
 /**
@@ -186,6 +218,16 @@ function* applyServerState(serverState: ServerStateSyncPayload) {
   }
 
   // 同步子弹状态 - 使用 updateBullets 批量更新
+  const serverBulletIds = new Set(serverState.bullets.map(b => b.bulletId));
+
+  // 检测消失的子弹（本地有但服务器没有），生成本地爆炸效果
+  for (const [bulletId, bullet] of state.bullets.entries()) {
+    if (!serverBulletIds.has(bulletId)) {
+      // 子弹消失，在其位置生成爆炸效果（使用 fork 异步执行）
+      yield fork(explosionFromBulletLocal, bullet.x + 2, bullet.y + 2);
+    }
+  }
+
   let updatedBulletsMap = IMap<BulletId, BulletRecord>();
   for (const bulletData of serverState.bullets) {
     const newBullet = new BulletRecord({
@@ -218,6 +260,8 @@ function* applyServerState(serverState: ServerStateSyncPayload) {
 
     if (bricksToRemove.length > 0) {
       yield put(actions.removeBricks(ISet(bricksToRemove)));
+      // 本地播放砖块摧毁音效（不广播）
+      yield put(actions.playSound('bullet_hit_2'));
     }
   }
 }

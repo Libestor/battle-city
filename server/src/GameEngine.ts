@@ -390,6 +390,8 @@ export class GameEngine {
             bulletId,
             x: bulletX,
             y: bulletY,
+            lastX: bulletX,  // 首帧 lastX 等于当前位置
+            lastY: bulletY,  // 首帧 lastY 等于当前位置
             direction: tank.direction,
             speed: BULLET_SPEED,
             tankId: tank.tankId,
@@ -407,6 +409,10 @@ export class GameEngine {
      */
     private updateBullets(delta: number): void {
         for (const bullet of this.state.bullets) {
+            // 保存上一帧位置（用于 MBR 碰撞检测）
+            bullet.lastX = bullet.x;
+            bullet.lastY = bullet.y;
+
             const speed = bullet.speed * delta;
             const newPos = this.calculateNewPosition(bullet.x, bullet.y, bullet.direction, speed);
             bullet.x = newPos.x;
@@ -436,18 +442,43 @@ export class GameEngine {
     private handleBulletWallCollisions(): void {
         const bulletsToRemove: number[] = [];
 
+        // spreadBullet 参数（与前端一致）
+        const BULLET_EXPLOSION_SPREAD = 4;
+        const BULLET_EXPLOSION_THRESHOLD = 0.01;
+
         for (const bullet of this.state.bullets) {
             let bulletHit = false;
             const bricksToDestroy: number[] = [];
             const steelsToDestroy: number[] = [];
 
-            // 子弹碰撞区域（扩展为 spreadBullet 效果）
-            const bulletRect = {
-                x: bullet.x,
-                y: bullet.y,
-                width: BULLET_SIZE,
-                height: BULLET_SIZE,
-            };
+            // 先计算子弹轨迹的 MBR（从 lastX/lastY 到当前位置）
+            const mbrX = Math.min(bullet.x, bullet.lastX);
+            const mbrY = Math.min(bullet.y, bullet.lastY);
+            const mbrWidth = Math.abs(bullet.x - bullet.lastX) + BULLET_SIZE;
+            const mbrHeight = Math.abs(bullet.y - bullet.lastY) + BULLET_SIZE;
+
+            // 再应用 spreadBullet 效果
+            // 子弹向上/下时在 x 轴扩展，向左/右时在 y 轴扩展
+            const spreadValue = BULLET_EXPLOSION_SPREAD + BULLET_EXPLOSION_THRESHOLD;
+            let bulletRect: { x: number; y: number; width: number; height: number };
+
+            if (bullet.direction === 'up' || bullet.direction === 'down') {
+                // 垂直移动：扩展宽度
+                bulletRect = {
+                    x: mbrX - spreadValue,
+                    y: mbrY - BULLET_EXPLOSION_THRESHOLD,
+                    width: mbrWidth + 2 * spreadValue,
+                    height: mbrHeight + BULLET_EXPLOSION_THRESHOLD,
+                };
+            } else {
+                // 水平移动：扩展高度
+                bulletRect = {
+                    x: mbrX - BULLET_EXPLOSION_THRESHOLD,
+                    y: mbrY - spreadValue,
+                    width: mbrWidth + 2 * BULLET_EXPLOSION_THRESHOLD,
+                    height: mbrHeight + 2 * spreadValue,
+                };
+            }
 
             // 遍历砖块（使用 IndexHelper.iter 逻辑）
             const brickCol1 = Math.max(0, Math.floor(bulletRect.x / BRICK_SIZE));
