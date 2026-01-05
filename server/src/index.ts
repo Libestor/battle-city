@@ -127,13 +127,13 @@ io.on('connection', (socket) => {
 
           io.to(roomId).emit(SocketEvent.GAME_STATE_INIT, initialState);
 
-          // 启动状态广播（每16ms，约60FPS）
+          // 启动状态广播（每50ms，约20FPS - 降低频率优化性能）
           const broadcastInterval = setInterval(() => {
             const gameEngine = gameEngines.get(roomId);
             if (gameEngine) {
               io.to(roomId).emit(SocketEvent.STATE_SYNC, gameEngine.getState());
             }
-          }, 16);
+          }, 50);
           broadcastIntervals.set(roomId, broadcastInterval);
 
           Logger.info(`Game started in room: ${roomId} with server game engine`);

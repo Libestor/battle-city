@@ -135,6 +135,17 @@ export interface TankState {
   frozenTimeout: number;
   cooldown: number;
   withPowerUp: boolean;
+
+  // AI 相关字段（仅 bot 使用）
+  aiState?: {
+    mode: 'wander' | 'attack';     // 当前模式
+    moveTimer: number;             // 移动方向持续时间
+    targetDirection: Direction;    // 目标方向
+    fireTimer: number;             // 开火计时器
+    blockedTimer: number;          // 被阻塞计时器
+    lastX: number;                 // 上一帧位置（检测是否被阻塞）
+    lastY: number;
+  };
 }
 
 // 子弹状态

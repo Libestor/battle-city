@@ -49,6 +49,21 @@ const PLAYER_SPAWN_POSITIONS = {
     guest: { x: 8 * BLOCK_SIZE, y: 12 * BLOCK_SIZE },
 };
 
+// AI 出生点（地图顶部三个位置）
+const AI_SPAWN_POSITIONS = [
+    { x: 0 * BLOCK_SIZE, y: 0 },
+    { x: 6 * BLOCK_SIZE, y: 0 },
+    { x: 12 * BLOCK_SIZE, y: 0 },
+];
+
+// AI 相关常量
+const MAX_AI_ON_SCREEN = 4;       // 同时存在的最大 AI 数量
+const AI_SPAWN_INTERVAL = 3000;   // AI 生成间隔（ms）
+const AI_MOVE_CHANGE_INTERVAL = { min: 1000, max: 3000 }; // AI 换方向间隔
+const AI_FIRE_INTERVAL = { min: 500, max: 1500 };         // AI 开火间隔
+const AI_BLOCKED_THRESHOLD = 500; // 被阻塞检测阈值（ms）
+const DIRECTIONS: Direction[] = ['up', 'down', 'left', 'right'];
+
 /**
  * 服务器端游戏引擎
  * 负责运行游戏逻辑、处理输入、维护状态
@@ -66,6 +81,10 @@ export class GameEngine {
         host: { direction: Direction | null; moving: boolean; firing: boolean };
         guest: { direction: Direction | null; moving: boolean; firing: boolean };
     };
+
+    // AI 生成状态
+    private aiSpawnTimer: number = 0;
+    private aiSpawnIndex: number = 0; // 当前使用的出生点索引
 
     constructor(roomId: string) {
         this.roomId = roomId;
@@ -152,6 +171,223 @@ export class GameEngine {
     }
 
     /**
+     * 生成 AI 坦克
+     */
+    private spawnAITank(): TankState | null {
+        // 检查是否还有剩余 AI
+        if (this.state.remainingBots <= 0) {
+            return null;
+        }
+
+        // 检查当前 AI 数量是否达到上限
+        const currentAICount = this.state.tanks.filter(t => t.side === 'bot' && t.alive).length;
+        if (currentAICount >= MAX_AI_ON_SCREEN) {
+            return null;
+        }
+
+        // 选择出生点（循环使用三个出生点）
+        const spawnPos = AI_SPAWN_POSITIONS[this.aiSpawnIndex % AI_SPAWN_POSITIONS.length];
+        this.aiSpawnIndex++;
+
+        // 检查出生点是否被占用
+        const isOccupied = this.state.tanks.some(t =>
+            t.alive && this.testCollision(
+                spawnPos.x, spawnPos.y, TANK_SIZE, TANK_SIZE,
+                t.x, t.y, TANK_SIZE, TANK_SIZE, -2
+            )
+        );
+        if (isOccupied) {
+            return null;
+        }
+
+        const tankId = this.generateTankId();
+
+        // 根据剩余 AI 数量决定等级
+        const remaining = this.state.remainingBots;
+        let level: 'basic' | 'fast' | 'power' | 'armor' = 'basic';
+        if (remaining <= 4) {
+            level = 'armor';  // 最后几个是装甲坦克
+        } else if (remaining % 4 === 0) {
+            level = 'fast';   // 每4个有一个快速坦克
+        } else if (remaining % 5 === 0) {
+            level = 'power';  // 每5个有一个威力坦克
+        }
+
+        const hp = level === 'armor' ? 4 : 1;
+
+        const tank: TankState = {
+            tankId,
+            x: spawnPos.x,
+            y: spawnPos.y,
+            direction: 'down',
+            moving: true,
+            alive: true,
+            side: 'bot',
+            level,
+            color: 'silver',
+            hp,
+            helmetDuration: 0,
+            frozenTimeout: 0,
+            cooldown: 0,
+            withPowerUp: remaining === 15 || remaining === 10 || remaining === 5, // 特定 AI 带道具
+            aiState: {
+                mode: Math.random() < 0.3 ? 'attack' : 'wander',
+                moveTimer: this.randomRange(AI_MOVE_CHANGE_INTERVAL.min, AI_MOVE_CHANGE_INTERVAL.max),
+                targetDirection: 'down',
+                fireTimer: this.randomRange(AI_FIRE_INTERVAL.min, AI_FIRE_INTERVAL.max),
+                blockedTimer: 0,
+                lastX: spawnPos.x,
+                lastY: spawnPos.y,
+            },
+        };
+
+        this.state.tanks.push(tank);
+        this.state.remainingBots--;
+
+        Logger.info(`AI tank spawned: ${tankId}, level: ${level}, remaining: ${this.state.remainingBots}`);
+        return tank;
+    }
+
+    /**
+     * 处理 AI 坦克生成
+     */
+    private updateAISpawning(delta: number): void {
+        // 更新生成计时器
+        this.aiSpawnTimer += delta;
+
+        // 检查是否应该生成新 AI
+        if (this.aiSpawnTimer >= AI_SPAWN_INTERVAL) {
+            this.aiSpawnTimer = 0;
+            this.spawnAITank();
+        }
+    }
+
+    /**
+     * 更新 AI 坦克（移动和开火）
+     * 完全移植单机版逻辑
+     */
+    private updateAITanks(delta: number): void {
+        for (const tank of this.state.tanks) {
+            if (tank.side !== 'bot' || !tank.alive || !tank.aiState) continue;
+            if (tank.frozenTimeout > 0) continue; // 冻结状态不移动
+
+            const ai = tank.aiState;
+
+            // 检测是否被阻塞（位置几乎没变化）
+            const movedDistance = Math.abs(tank.x - ai.lastX) + Math.abs(tank.y - ai.lastY);
+            if (movedDistance < 0.5) {
+                ai.blockedTimer += delta;
+            } else {
+                ai.blockedTimer = 0;
+            }
+            ai.lastX = tank.x;
+            ai.lastY = tank.y;
+
+            // 如果被阻塞太久，立即换方向
+            if (ai.blockedTimer >= AI_BLOCKED_THRESHOLD) {
+                ai.blockedTimer = 0;
+                ai.targetDirection = this.getRandomDirection(tank.direction);
+                ai.moveTimer = this.randomRange(AI_MOVE_CHANGE_INTERVAL.min, AI_MOVE_CHANGE_INTERVAL.max);
+            }
+
+            // 更新移动计时器
+            ai.moveTimer -= delta;
+            if (ai.moveTimer <= 0) {
+                // 切换方向
+                if (ai.mode === 'attack') {
+                    // 攻击模式：优先向老鹰方向移动
+                    ai.targetDirection = this.getDirectionTowardEagle(tank);
+                } else {
+                    // 漫游模式：随机方向
+                    ai.targetDirection = this.getRandomDirection();
+                }
+                ai.moveTimer = this.randomRange(AI_MOVE_CHANGE_INTERVAL.min, AI_MOVE_CHANGE_INTERVAL.max);
+
+                // 随机切换模式
+                if (Math.random() < 0.1) {
+                    ai.mode = ai.mode === 'wander' ? 'attack' : 'wander';
+                }
+            }
+
+            // 更新方向
+            if (tank.direction !== ai.targetDirection) {
+                tank.direction = ai.targetDirection;
+            }
+
+            // 移动
+            tank.moving = true;
+            const speed = tank.level === 'fast' ? TANK_SPEED.bot_fast : TANK_SPEED.bot;
+            const newPos = this.calculateNewPosition(tank.x, tank.y, tank.direction, speed * delta);
+            const clampedPos = this.clampPosition(newPos.x, newPos.y, TANK_SIZE);
+
+            if (!this.checkTankWallCollision(clampedPos.x, clampedPos.y) &&
+                !this.checkTankTankCollision(tank.tankId, clampedPos.x, clampedPos.y)) {
+                tank.x = clampedPos.x;
+                tank.y = clampedPos.y;
+            } else {
+                // 碰撞时换方向
+                ai.targetDirection = this.getRandomDirection(tank.direction);
+            }
+
+            // 更新开火计时器
+            ai.fireTimer -= delta;
+            if (ai.fireTimer <= 0 && tank.cooldown <= 0) {
+                this.fireBullet(tank);
+                ai.fireTimer = this.randomRange(AI_FIRE_INTERVAL.min, AI_FIRE_INTERVAL.max);
+            }
+        }
+    }
+
+    /**
+     * 获取随机方向（可排除当前方向）
+     */
+    private getRandomDirection(exclude?: Direction): Direction {
+        const available = exclude
+            ? DIRECTIONS.filter(d => d !== exclude)
+            : DIRECTIONS;
+        return available[Math.floor(Math.random() * available.length)];
+    }
+
+    /**
+     * 获取朝向老鹰的方向
+     */
+    private getDirectionTowardEagle(tank: TankState): Direction {
+        // 老鹰位置（底部中央）
+        const eagleX = 6 * BLOCK_SIZE;
+        const eagleY = 12 * BLOCK_SIZE;
+
+        const dx = eagleX - tank.x;
+        const dy = eagleY - tank.y;
+
+        // 优先选择距离更远的方向
+        if (Math.abs(dy) > Math.abs(dx)) {
+            return dy > 0 ? 'down' : 'up';
+        } else {
+            return dx > 0 ? 'right' : 'left';
+        }
+    }
+
+    /**
+     * 检查坦克与坦克碰撞
+     */
+    private checkTankTankCollision(selfTankId: number, x: number, y: number): boolean {
+        for (const other of this.state.tanks) {
+            if (other.tankId === selfTankId || !other.alive) continue;
+            if (this.testCollision(x, y, TANK_SIZE, TANK_SIZE, other.x, other.y, TANK_SIZE, TANK_SIZE, -0.01)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 生成随机范围整数
+     */
+    private randomRange(min: number, max: number): number {
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    /**
      * 启动游戏
      */
     start(): void {
@@ -194,6 +430,12 @@ export class GameEngine {
         const delta = now - this.lastTickTime;
         this.lastTickTime = now;
 
+        // 处理 AI 坦克生成
+        this.updateAISpawning(delta);
+
+        // 处理 AI 坦克移动和开火
+        this.updateAITanks(delta);
+
         // 处理玩家坦克移动
         this.updatePlayerTanks(delta);
 
@@ -205,6 +447,9 @@ export class GameEngine {
 
         // 更新坦克状态（减少冷却时间等）
         this.updateTankStates(delta);
+
+        // 检查玩家重生
+        this.checkPlayerRespawn();
     }
 
     /**
@@ -638,6 +883,57 @@ export class GameEngine {
                 tank.frozenTimeout = Math.max(0, tank.frozenTimeout - delta);
             }
         }
+    }
+
+    /**
+     * 检查玩家重生
+     */
+    private checkPlayerRespawn(): void {
+        for (const role of ['host', 'guest'] as const) {
+            const player = this.state.players[role];
+            const tankId = player.activeTankId;
+
+            if (!tankId) {
+                // 玩家没有坦克，需要重生
+                if (player.lives > 0) {
+                    this.respawnPlayer(role);
+                }
+                continue;
+            }
+
+            const tank = this.state.tanks.find(t => t.tankId === tankId);
+            if (!tank || !tank.alive) {
+                // 坦克死亡，需要重生
+                player.activeTankId = null;
+                player.lives--;
+
+                if (player.lives > 0) {
+                    // 延迟重生（立即重生）
+                    this.respawnPlayer(role);
+                }
+            }
+        }
+    }
+
+    /**
+     * 重生玩家
+     */
+    private respawnPlayer(role: 'host' | 'guest'): void {
+        const spawnPos = PLAYER_SPAWN_POSITIONS[role];
+
+        // 检查出生点是否被占用
+        const isOccupied = this.state.tanks.some(t =>
+            t.alive && this.testCollision(
+                spawnPos.x, spawnPos.y, TANK_SIZE, TANK_SIZE,
+                t.x, t.y, TANK_SIZE, TANK_SIZE, -2
+            )
+        );
+
+        if (!isOccupied) {
+            const tank = this.spawnPlayerTank(role);
+            Logger.info(`Player ${role} respawned with ${this.state.players[role].lives} lives`);
+        }
+        // 如果出生点被占用，下一帧再尝试
     }
 
     /**

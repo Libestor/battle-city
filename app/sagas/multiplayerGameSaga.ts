@@ -82,6 +82,40 @@ function* explosionFromBulletLocal(cx: number, cy: number) {
 }
 
 /**
+ * 本地坦克爆炸动画（不广播）
+ * 坦克爆炸动画比子弹爆炸更大更持久
+ */
+function* tankExplosionLocal(cx: number, cy: number) {
+  const tankExplosionShapeTiming: [ExplosionShape, number][] = [
+    ['s0', f(7)],
+    ['s1', f(5)],
+    ['s2', f(7)],
+    ['b0', f(5)],
+    ['b1', f(7)],
+    ['s2', f(5)],
+  ];
+
+  const explosionId = getNextId('explosion');
+  try {
+    for (const [shape, time] of tankExplosionShapeTiming) {
+      yield put(
+        actions.setExplosion(
+          new ExplosionRecord({
+            cx,
+            cy,
+            shape,
+            explosionId,
+          }),
+        ),
+      );
+      yield Timing.delay(time);
+    }
+  } finally {
+    yield put(actions.removeExplosion(explosionId));
+  }
+}
+
+/**
  * 存储本地玩家输入状态
  */
 let localInputState = {
@@ -183,12 +217,15 @@ function* applyServerState(serverState: ServerStateSyncPayload) {
         yield put(actions.stopMove(tankData.tankId));
       }
 
-      // 处理死亡
+      // 处理死亡 - 添加爆炸动画和音效
       if (!tankData.alive && existingTank.alive) {
         yield put(actions.setTankToDead(tankData.tankId));
+        // 播放爆炸音效和动画
+        yield put(actions.playSound('explosion_1'));
+        yield fork(tankExplosionLocal, existingTank.x + 8, existingTank.y + 8);
       }
     } else {
-      // 创建新坦克
+      // 创建新坦克 - 播放重生音效
       const newTank = new TankRecord({
         tankId: tankData.tankId,
         x: tankData.x,
