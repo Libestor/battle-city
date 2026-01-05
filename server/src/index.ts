@@ -8,7 +8,7 @@ import { RoomManager } from './RoomManager';
 import { InputValidator } from './InputValidator';
 import { GameStateManager } from './GameStateManager';
 import { GameEngine } from './GameEngine';
-import { SocketEvent, ErrorType, PlayerInput, GameStateEvent } from './types';
+import { SocketEvent, ErrorType, PlayerInput, GameStateEvent, MapChangesPayload } from './types';
 
 // 创建Express应用
 const app = express();
@@ -127,11 +127,25 @@ io.on('connection', (socket) => {
 
           io.to(roomId).emit(SocketEvent.GAME_STATE_INIT, initialState);
 
-          // 启动状态广播（每50ms，约20FPS - 降低频率优化性能）
+          // 首次发送完整状态（包含地图）
+          io.to(roomId).emit(SocketEvent.STATE_SYNC, engine.getState(true));
+
+          // 启动状态广播（每50ms，约20FPS）
           const broadcastInterval = setInterval(() => {
             const gameEngine = gameEngines.get(roomId);
             if (gameEngine) {
-              io.to(roomId).emit(SocketEvent.STATE_SYNC, gameEngine.getState());
+              // 发送增量状态（不包含地图）
+              io.to(roomId).emit(SocketEvent.STATE_SYNC, gameEngine.getState(false));
+
+              // 检查地图变化并单独发送
+              const mapChanges = gameEngine.getMapChanges();
+              if (mapChanges) {
+                const payload: MapChangesPayload = {
+                  ...mapChanges,
+                  timestamp: Date.now(),
+                };
+                io.to(roomId).emit(SocketEvent.MAP_CHANGES, payload);
+              }
             }
           }, 50);
           broadcastIntervals.set(roomId, broadcastInterval);

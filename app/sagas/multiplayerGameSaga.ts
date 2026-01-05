@@ -10,6 +10,7 @@ import {
   ServerStateSyncPayload,
   ServerTankState,
   ServerBulletState,
+  MapChangesPayload,
 } from '../types/multiplayer-types';
 import * as actions from '../utils/actions';
 import { TankRecord, BulletRecord, ExplosionRecord } from '../types';
@@ -30,6 +31,23 @@ function createStateSyncChannel(): EventChannel<ServerStateSyncPayload> {
 
     return () => {
       socketService.off(SocketEvent.STATE_SYNC, handler);
+    };
+  });
+}
+
+/**
+ * 创建地图变化事件通道
+ */
+function createMapChangesChannel(): EventChannel<MapChangesPayload> {
+  return eventChannel(emitter => {
+    const handler = (data: MapChangesPayload) => {
+      emitter(data);
+    };
+
+    socketService.on(SocketEvent.MAP_CHANGES, handler);
+
+    return () => {
+      socketService.off(SocketEvent.MAP_CHANGES, handler);
     };
   });
 }
@@ -282,8 +300,7 @@ function* applyServerState(serverState: ServerStateSyncPayload) {
   // 批量更新子弹
   yield put(actions.updateBullets(updatedBulletsMap));
 
-  // 同步砖块状态（被破坏的砖块）
-  // 服务器发送的 bricks 数组中，false 表示砖块已被破坏
+  // 同步完整地图状态（仅在首次接收时，即 map 字段存在时）
   if (serverState.map && serverState.map.bricks) {
     const bricksToRemove: number[] = [];
     const currentBricks = state.map.bricks;
@@ -297,9 +314,44 @@ function* applyServerState(serverState: ServerStateSyncPayload) {
 
     if (bricksToRemove.length > 0) {
       yield put(actions.removeBricks(ISet(bricksToRemove)));
-      // 本地播放砖块摧毁音效（不广播）
-      yield put(actions.playSound('bullet_hit_2'));
     }
+  }
+}
+
+/**
+ * 应用地图变化（增量更新）
+ */
+function* applyMapChanges(mapChanges: MapChangesPayload) {
+  const state: State = yield select();
+
+  if (!state.multiplayer.enabled) {
+    return;
+  }
+
+  // 移除被破坏的砖块
+  if (mapChanges.bricksDestroyed.length > 0) {
+    yield put(actions.removeBricks(ISet(mapChanges.bricksDestroyed)));
+    // 本地播放砖块摧毁音效（不广播）
+    yield put(actions.playSound('bullet_hit_2'));
+  }
+
+  // 移除被破坏的钢块（如果需要的话）
+  // 目前游戏中钢块破坏较少，可以暂时忽略或添加类似逻辑
+}
+
+/**
+ * 接收地图变化并更新本地状态
+ */
+function* receiveMapChanges() {
+  const channel: EventChannel<MapChangesPayload> = yield call(createMapChangesChannel);
+
+  try {
+    while (true) {
+      const mapChanges: MapChangesPayload = yield take(channel);
+      yield call(applyMapChanges, mapChanges);
+    }
+  } finally {
+    channel.close();
   }
 }
 
@@ -341,7 +393,7 @@ export function* isHost() {
 
 /**
  * 联机游戏主saga（服务器权威模式）
- * 
+ *
  * 在服务器权威模式下：
  * - 客户端只发送玩家输入到服务器
  * - 客户端接收服务器广播的游戏状态并渲染
@@ -359,10 +411,11 @@ export default function* multiplayerGameSaga() {
 
     console.log(`[Multiplayer] Server-Authoritative mode started, role: ${role}`);
 
-    // 服务器权威模式：发送输入 + 接收状态
+    // 服务器权威模式：发送输入 + 接收状态 + 接收地图变化
     yield race({
       sendInput: call(sendLocalPlayerInput),
       receiveState: call(receiveServerState),
+      receiveMapChanges: call(receiveMapChanges),
       ping: call(pingLoop),
       leave: take([A.LeaveGameScene, A.DisableMultiplayer]),
     });

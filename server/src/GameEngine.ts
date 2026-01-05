@@ -86,6 +86,15 @@ export class GameEngine {
     private aiSpawnTimer: number = 0;
     private aiSpawnIndex: number = 0; // 当前使用的出生点索引
 
+    // 地图变化追踪（用于增量更新）
+    private mapChanges: {
+        bricksDestroyed: Set<number>;
+        steelsDestroyed: Set<number>;
+    } = {
+        bricksDestroyed: new Set(),
+        steelsDestroyed: new Set(),
+    };
+
     constructor(roomId: string) {
         this.roomId = roomId;
 
@@ -763,9 +772,11 @@ export class GameEngine {
             // 破坏碰撞的砖块和钢块
             for (const brickIndex of bricksToDestroy) {
                 this.state.map.bricks[brickIndex] = false;
+                this.mapChanges.bricksDestroyed.add(brickIndex);
             }
             for (const steelIndex of steelsToDestroy) {
                 this.state.map.steels[steelIndex] = false;
+                this.mapChanges.steelsDestroyed.add(steelIndex);
             }
 
             if (bulletHit) {
@@ -953,17 +964,38 @@ export class GameEngine {
 
     /**
      * 获取当前游戏状态（用于广播）
+     * @param includeFullMap 是否包含完整地图数据（默认false，只在初始化时为true）
      */
-    getState(): StateSyncPayload {
+    getState(includeFullMap: boolean = false): StateSyncPayload {
         return {
             tanks: this.state.tanks,
             bullets: this.state.bullets,
-            map: this.state.map,
+            map: includeFullMap ? this.state.map : undefined,
             players: this.state.players,
             remainingBots: this.state.remainingBots,
             gameStatus: this.state.gameStatus,
             timestamp: Date.now(),
         };
+    }
+
+    /**
+     * 获取地图变化（用于增量更新）并清空变化记录
+     */
+    getMapChanges(): { bricksDestroyed: number[]; steelsDestroyed: number[] } | null {
+        if (this.mapChanges.bricksDestroyed.size === 0 && this.mapChanges.steelsDestroyed.size === 0) {
+            return null;
+        }
+
+        const changes = {
+            bricksDestroyed: Array.from(this.mapChanges.bricksDestroyed),
+            steelsDestroyed: Array.from(this.mapChanges.steelsDestroyed),
+        };
+
+        // 清空变化记录
+        this.mapChanges.bricksDestroyed.clear();
+        this.mapChanges.steelsDestroyed.clear();
+
+        return changes;
     }
 
     /**

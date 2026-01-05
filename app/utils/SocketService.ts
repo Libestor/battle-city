@@ -174,6 +174,11 @@ export class SocketService {
       this.emit(SocketEvent.STATE_SYNC, data);
     });
 
+    // 地图变化增量更新
+    this.socket.on(SocketEvent.MAP_CHANGES, (data: any) => {
+      this.emit(SocketEvent.MAP_CHANGES, data);
+    });
+
     // Pong响应
     this.socket.on(SocketEvent.PONG, (data) => {
       this.emit(SocketEvent.PONG, data);

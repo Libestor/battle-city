@@ -22,6 +22,7 @@ export enum SocketEvent {
   // 状态同步
   GAME_STATE_EVENT = 'game_state_event',
   STATE_SYNC = 'state_sync',  // 服务器权威模式：接收完整状态
+  MAP_CHANGES = 'map_changes',  // 地图变化增量更新
 
   // 连接管理
   PING = 'ping',
@@ -170,12 +171,19 @@ export interface ServerPlayerState {
 export interface ServerStateSyncPayload {
   tanks: ServerTankState[];
   bullets: ServerBulletState[];
-  map: ServerMapState;
+  map?: ServerMapState;  // 可选：只在初始化时发送完整地图
   players: {
     host: ServerPlayerState;
     guest: ServerPlayerState;
   };
   remainingBots: number;
   gameStatus: 'waiting' | 'playing' | 'paused' | 'finished';
+  timestamp: number;
+}
+
+// 地图变化负载（增量更新）
+export interface MapChangesPayload {
+  bricksDestroyed: number[];
+  steelsDestroyed: number[];
   timestamp: number;
 }
