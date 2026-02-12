@@ -8,6 +8,7 @@ type TextInputProps = {
   maxLength: number
   value: string
   onChange: (newValue: string) => void
+  placeholder?: string
 }
 
 export default class TextInput extends React.Component<TextInputProps, { focused: boolean }> {

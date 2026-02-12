@@ -55,7 +55,7 @@ export function editorContent(state = new StageConfig(), action: Action) {
   }
 }
 
-export default combineReducers<State>({
+export default combineReducers({
   router: routerReducer,
   game,
   player1,
