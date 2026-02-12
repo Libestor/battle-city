@@ -1,5 +1,9 @@
+import React from 'react'
 import classNames from 'classnames'
 import { Routes, Route, useLocation } from 'react-router-dom'
+
+declare const COMPILE_VERSION: string
+declare const COMPILE_DATE: string
 
 const AboutGallery = () => (
   <div>

@@ -8,6 +8,7 @@ interface P {
   y?: number
   width: number
   height: number
+  children?: React.ReactNode
 }
 
 export default class Curtain extends React.PureComponent<P> {

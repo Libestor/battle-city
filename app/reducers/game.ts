@@ -94,7 +94,7 @@ export default function game(state = new GameRecord(), action: Action) {
     return state.update('remainingBots', bots => bots.shift())
   } else if (action.type === A.IncKillCount) {
     const { playerName, level } = action
-    return state.updateIn(['killInfo', playerName, level], x => (x == null ? 1 : x + 1))
+    return state.updateIn(['killInfo', playerName, level], (x: number) => (x == null ? 1 : x + 1))
   } else if (action.type === A.UpdateTransientKillInfo) {
     return state.set('transientKillInfo', action.info)
   } else if (action.type === A.ShowTotalKillCount) {

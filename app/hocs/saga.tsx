@@ -11,8 +11,8 @@ export default function saga(sagaFn: any, reducerFn: any, preloadedState?: any):
       task: Task
       store: any
 
-      constructor() {
-        super()
+      constructor(props: any) {
+        super(props)
         const sagaMiddleware = createSgaMiddleware()
         this.store = createStore(reducerFn, preloadedState, applyMiddleware(sagaMiddleware))
         this.task = sagaMiddleware.run(sagaFn)
